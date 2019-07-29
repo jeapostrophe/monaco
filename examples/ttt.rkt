@@ -1,6 +1,6 @@
 #lang racket/base
-(require racket/match
-         racket/promise)
+(require (for-syntax racket/base
+                     syntax/parse))
 
 #|
 
@@ -13,23 +13,12 @@ marks = (LSB) abcd efgh i
 
 |#
 
-(define (show-mem)
-  (printf "~a MB\n" (real->decimal-string (/ (current-memory-use) (* 1024 1024)))))
 (define (bit m)
   (arithmetic-shift 1 m))
 (define (bitwise-bit-set n m)
   (bitwise-ior n (bit m)))
 (define (bitwise-bit-flip n m)
   (bitwise-xor n (bit m)))
-
-(define STATES (make-hash))
-(define-syntax-rule (state st n)
-  (hash-ref! STATES st (λ () n)))
-
-(struct *end (scores))
-(struct *middle (choices))
-(define-syntax-rule (end st sc ...) (state st (*end (vector sc ...))))
-(define-syntax-rule (middle st cs) (state st (delay (*middle cs))))
 
 (define rows 3)
 (define cols 3)
@@ -67,39 +56,48 @@ marks = (LSB) abcd efgh i
 (define (complete? n)
   (= n complete))
 
-(define COUNT 0)
-(define (ttt n)
-  (set! COUNT (add1 COUNT))
-  (define x? (bitwise-bit-set? n player-idx))
-  (define n-next (bitwise-bit-flip n player-idx))
-  (define me-start (if x? X-start O-start))
-  (define Xs (bitwise-bit-field n X-start X-end))
-  (define Os (bitwise-bit-field n O-start O-end))
-  (define B (bitwise-ior Xs Os))
-  (cond
-    [(winning? Xs) (end n 1 0)]
-    [(winning? Os) (end n 0 1)]
-    [(complete? B) (end n 0 0)]
-    [else
-     (middle
-      n
-      (for/list ([i (in-range slots)]
-                 #:unless (bitwise-bit-set? B i))
-        (ttt (bitwise-bit-set n-next (+ me-start i)))))]))
+(define-syntax (condlet stx)
+  (syntax-parse stx
+    [(_ [#:when question answer ...+])
+     #'(when question answer ...)]
+    [(_ [#:cond question answer ...+] . more)
+     #'(if question (let () answer ...) (condlet . more))]
+    [(_ code)
+     #'code]
+    [(_ code . more)
+     #'(let () code (condlet . more))]))
+
+(define (ttt st)
+  (condlet
+   (define Xs (bitwise-bit-field st X-start X-end))
+   [#:cond (winning? Xs) (vector 1 0)]
+   (define Os (bitwise-bit-field st O-start O-end))
+   [#:cond (winning? Os) (vector 0 1)]
+   (define B (bitwise-ior Xs Os))
+   [#:cond (complete? B) (vector 0 0)]
+   (define x? (bitwise-bit-set? st player-idx))
+   (define st-other (bitwise-bit-flip st player-idx))
+   (define me-start (if x? X-start O-start))
+   (for/list ([i (in-range slots)]
+              #:unless (bitwise-bit-set? B i))
+     (bitwise-bit-set st-other (+ me-start i)))))
+
+;; Engine
+
+(define (show-mem)
+  (printf "~a MB\n" (real->decimal-string (/ (current-memory-use) (* 1024 1024)))))
+
+(define (explore! choices st0)
+  (define VISITED? (make-hash))
+  (let loop ([st st0])
+    (condlet
+     [#:cond (hash-has-key? VISITED? st) 0]
+     (hash-set! VISITED? st #t)
+     (define opts (choices st))
+     [#:cond (vector? opts) 1]
+     (for/sum ([o (in-list opts)])
+       (loop o)))))
 
 (show-mem)
-(define game (time (ttt init-state)))
-
-(define (explore! g)
-  (match g
-    [(? *end?) 1]
-    [(*middle cs) (+ 1 (explore! cs))]
-    ['() 0]
-    [(cons a d) (+ (explore! a) (explore! d))]
-    [(? promise?)
-     (if (promise-forced? g)
-       0
-       (explore! (force g)))]))
-(time (explore! game))
+(time (explore! ttt init-state))
 (show-mem)
-COUNT
