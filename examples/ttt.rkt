@@ -58,8 +58,8 @@ marks = (LSB) abcd efgh i
 
 (define-syntax (condlet stx)
   (syntax-parse stx
-    [(_ [#:when question answer ...+])
-     #'(when question answer ...)]
+    [(_)
+     #'(void)]
     [(_ [#:cond question answer ...+] . more)
      #'(if question (let () answer ...) (condlet . more))]
     [(_ code)
@@ -80,7 +80,7 @@ marks = (LSB) abcd efgh i
    (define me-start (if x? X-start O-start))
    (for/list ([i (in-range slots)]
               #:unless (bitwise-bit-set? B i))
-     (bitwise-bit-set st-other (+ me-start i)))))
+     (cons i (bitwise-bit-set st-other (+ me-start i))))))
 
 ;; Engine
 
@@ -95,9 +95,121 @@ marks = (LSB) abcd efgh i
      (hash-set! VISITED? st #t)
      (define opts (choices st))
      [#:cond (vector? opts) 1]
-     (for/sum ([o (in-list opts)])
-       (loop o)))))
+     (for/sum ([m*o (in-list opts)])
+       (loop (cdr m*o))))))
 
 (show-mem)
 (time (explore! ttt init-state))
 (show-mem)
+
+;; XXX Use adqc to write the functions?
+
+;; XXX MCTS node, v, data:
+;; - s(v) --- Game State
+;; - a(v) --- Inducing action
+;; - Q(v) --- total reward
+;; - N(v) --- number of payouts
+
+;; XXX The discussion of MCTS in https://arxiv.org/pdf/1805.09218.pdf
+;; says that there is a fixed set of actions. But sometimes, actions
+;; are illegal (like in Go, you can't put your stone on top of
+;; another.) Would you represent this by saying that you lose if you
+;; do an illegal move? Or do you just vary the number of actions on
+;; each node? Perhaps the MCTS-T algorithm is great for this
+;; situation, because it is well-designed for "ending early"
+;; situations. [This paper has a link to a git repo that implements
+;; it.]
+
+;; XXX Exploiting graph properties of game trees, by Plaat et al.,
+;; 1996 talks about "transpositions" (the same state occurring in
+;; different paths in the tree.)
+
+;; XXX Any space paper says
+;; - Left-Child Right-Sibling representation for the search tree
+;; - This seems to imply that we need to generate all of the children
+;;   at the same time.
+
+;; XXX MCTS steps
+;; - Selection: via tree policy
+;; --- - UCB1: choose child v' maximizing Q(v')/N(v') + K \sqrt{ln N(v) / N(v')}
+;; --- - K is often \sqrt(2) or \sqrt(2)/2
+;; --- - This could be tracked easily with a priority queue per node.
+;; --- - If v' is not in the tree, then it is "expanded"
+;; - Simulation:
+;; --- - Randomly playout of the game
+;; - Back propagation:
+;; --- - Update Q and N
+
+;; XXX Single-Observer Information-Set MCTS
+
+;; - The state is unknown, so we sample a concrete state from what is
+;;   possible (based on the actions we've observed in the past)
+
+;; - Still update the same tree
+
+;; XXX Multi-Observer Information-Set MCTS
+
+;; - One tree for each observer
+
+;; - Choosing a move for player-i uses the i-tree
+
+;; - Player i's tree has branches for actions but player j ≠ i's tree
+;;   has merged the branches when it can't tell the difference
+
+;; XXX AnyTime: MCTS is generic in the number of iterations it takes
+;; before returning an answer.
+;;
+;; - Run MCTS when the user is idle and immediately make move when
+;; they do. (Disadvantage: doesn't take advantage of what the user
+;; did.)
+;;
+;; - Run MCTS for as long as the player took making their
+;; move. (Disadvantage: Doesn't make use of idle time.)
+
+;; XXX AnySpace: Node recycling
+
+;; - http://mcts.ai/edpowley/papers/powley_aiide17.pdf
+
+;; - Predetermine how many nodes you want to store
+
+;; - Draw from the free list when you want one
+
+;; - If the free list is empty, remove the one for which the Q/N
+;;   values were least-recently read.
+
+;; - It must be read, because if not, then you may kill a sibling that
+;;   is useful.
+
+;; - You maintain this by adjusting the position of elements on the
+;;   way down the tree
+
+;; - This means that the all of the siblings of a node need to be ;;
+;;   touched on the way down, which is inefficient and doesn't make
+;;   use of the heap effectively. Perhaps you could update them when
+;;   readjusting the heap position of the sibling, but that would
+;;   either be inefficient (look through all) or not exhaustive (only
+;;   look at the ones on the path up the heap) and backwards (because
+;;   the top of the queue would be the ones at the top of the tree,
+;;   rather than the bottom)
+
+;; - Paper says: We maintain a queue Θ of nodes. Non-leaf node are
+;;   removed from Θ when visited during playout, and push to the back
+;;   of Θ when they are updated. Leaf nodes are never present in
+;;   Θ. Thus the node at the front of Θ is the least recently updated
+;;   non-leaf node.
+
+;; - If you remove a child, how do you get it back if you need it
+;;   again? Generate all choices from the parent and add the ones that
+;;   aren't there? How would you know? The paper doesn't say anything
+;;   about it.
+
+;; XXX Ultimate Tic-Tac-Toe: A 3x3 grid of boards where if you play in
+;; (2,1) then the opponent must use that board next.
+
+;; XXX Connect-4: A 7-column x 6-row grid where you try to get 4 in a
+;; row. Solved where first player wins if they play in the middle
+;; column.
+
+;; XXX Isolation: A 6x8 grid with two pawns where each turn you move
+;; your pawn and then remove a square from the board. You lose if you
+;; cannot move.
