@@ -201,7 +201,23 @@ marks = (LSB) abcd efgh i
 ;; - If you remove a child, how do you get it back if you need it
 ;;   again? Generate all choices from the parent and add the ones that
 ;;   aren't there? How would you know? The paper doesn't say anything
-;;   about it.
+;;   about it. One strategy would be to track only parents and delete
+;;   ALL of the children.
+
+;; XXX AlphaZero
+;; - How is the neural network used?
+;; --- - It is used to rank the children.
+;; --- - It is used during simulation to select the move (like a "heavy" playout)
+;; - Typical number of legal moves is used to scale exploration (the K constant)
+;; - Games are terminated early after a certain number of steps and scored.
+;; - Network input: N x N x (MT + L)
+;; --- - N is the size of the board
+;; --- - M is the number of planes (1 for each piece type)
+;; --- - T is the number of time steps into the past
+;; --- - L is game-specific variables, like legality of castling
+;; - Network output "policy" is basically what piece to "pick up" and where to put it
+;; --- - Probabilities for illegal moves are 0'd and then the rest re-normalized
+;; - MCTS # of iterations was 800
 
 ;; XXX Ultimate Tic-Tac-Toe: A 3x3 grid of boards where if you play in
 ;; (2,1) then the opponent must use that board next.
