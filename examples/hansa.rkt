@@ -112,6 +112,22 @@
      [Y Z 3]
      [Z AA 4])))
 
+(module+ main
+  (define total-cities
+    (length (rest (list-ref board 2))))
+  'total-cities total-cities
+  (define total-offices
+    (for/sum ([c (in-list (rest (list-ref board 2)))])
+    (length (rest c))))
+  'total-offices total-offices
+  (define total-routes
+    (length (rest (list-ref board 3))))
+  'total-routes total-routes
+  (define total-houses
+    (for/sum ([r (in-list (rest (list-ref board 3)))])
+      (third r)))
+  'total-houses total-houses)
+
 ;; Per-player state
 ;; - Status of desk                             =  11 bits
 ;; - Supply/stock count (traders)   [0, 26] x 2 =  10 bits
@@ -130,74 +146,126 @@
 ;; Total: 332 bits
 
 ;; Game state
-;; - Active player       [0, 4] =  3 bits
-;; - Active player actions remaining
-;; - Displaced player
-;; - Displaced player merchant count
-;; - Displaced player trader count
-;; - Location of bonuses        = 34 bits
+;; - Bonus locations (route)    = 34 bits
 ;; - Bonus supply (ECO)  [0, 5] =  3 bits
 ;; - Bonus supply (SCO)  [0, 2] =  2 bits
 ;; - Bonus supply (3xA)  [0, 2] =  2 bits
 ;; - Bonus supply (4xA)  [0, 2] =  2 bits
 ;; - Bonus supply ( IS)  [0, 3] =  2 bits
 ;; - Bonus supply (R3T)  [0, 2] =  2 bits
-;; Total: 50 bits (inaccurate)
+;; Total: 47 bits
+
+;; Control Flow
+;; - Active player       [0, 4] =  3 bits
+;; - Active player actions remaining 
+;; - Displaced player
+;; - Displaced player merchant count
+;; - Displaced player trader count
 
 ;; Total state
 ;; - Players   332 x 5 = 1660
-;; - Game              =   50 (inaccurate)
-;; Total: 1710 = 214 bytes (inaccurate)
+;; - Game              =   47
+;; - Control Flow      =  ???
+;; Total: 1707 = 214 bytes
 
-;; 16 MB for 80k states (inaccurate)
+;; 16 MB for 80k states
 
-;; Actions:
-;; - (Take-Income t m) for t in [0,7] and m in [0, 4]
-;;   t + m <= money-bag and t <= stock(t) and m <= stock(m)
-;; - (Take-Income-All)
-;;   money-bag == C
-;; - (Place Which House)
-;;   supply is enough and house is empty
-;; - (Displace Which House)
-;;   house is full of other, supply is enough
-;; - (Place-Displaced-Trader House)
-;;   house is empty, displaced player, displaced player trader count is >0
-;; - (Place-Displaced-Merchant House)
-;;   house is empty, displaced player, displaced player merchant count is >0
-;; - (Swap-Piece House House) ;; If one house is empty, then swap is empty
-;;   From has me, To has me or empty
-;; - (Claim-Route Route Claim-Choice)
-;;   Route is full of me
-;; - (Bonus:Swap-Office Office Office)
-;;   Offices in same city, have token
-;; - (Bonus:+3-Actions)
-;;   Have token
-;; - (Bonus:+4-Actions)
-;;   Have token
-;; - (Bonus:Improve-Skill Skill)
-;;   Have token, skill not completed
-;; - (Bonus:Remove-Three House House House)
-;;   House have traders
+;; Alternate state plan
 
-;; Claim-Choice:
-;; - (Establish-Office)
-;;   Office is available, merchant/trader in route, privilege is high enough
-;; - (Bonus:Establish-Extra-Office)
-;;   Have token, trader in route
-;; - (Improve-Ability)
-;;   City is ability and skill is not completed
-;; - (Claim-Medal Medal)
-;;   City is medal, merchant in route, privilege is high enough, medal is free
+;; Per-player state
+;; - 26 x Location of trader
+;; --- In supply
+;; --- In stock
+;; --- Desk [15 places]
+;; --- House [104 places] {replace with route? 34}
+;; --- Office [46 places]
+;; --- Extra office [27 places]
+;; --- Total: 194 places =~ 8 bits {7 bits}
+;; -  4 x Location of merchant
+;; --- In supply
+;; --- In stock
+;; --- Desk [3 places]
+;; --- House [104 places] {replace with route? 34}
+;; --- Office [16 places]
+;; --- Medals [4 places]
+;; --- Extra office [27 places] {remove?}
+;; --- Total: 156 places =~ 8 bits {6 bits}
+;; - Score [0, 20] = 5 bits
+;; - Total: 245 bits {211 bits}
 
-;; XXX need to compute how many actions are possible
+;; Game state
+;; - 16 x Location of bonus marker
+;; --- In stock
+;; --- On route [34 places]
+;; --- Unused player [5 places]
+;; --- Used player [5 places]
+;; --- At city [27 places, only ECO]
+;; --- Total: 72 places =~ 7 bits
+;; - Total: 112 bits
+
+;; Total state
+;; - Players   245 x 5 = 1225
+;; - Game              =  112
+;; - Control Flow      =  ???
+;; Total: 1337 = 168 bytes
+
+;; 13 MB for 80k states
 
 (module+ main
-  'total-offices
-  (for/sum ([c (in-list (rest (list-ref board 2)))])
-    (length (rest c)))
-  'total-routes
-  (length (rest (list-ref board 3)))
-  'total-houses
-  (for/sum ([r (in-list (rest (list-ref board 3)))])
-    (third r)))
+  'total-actions
+  (+
+   ;; Actions:
+   ;; - (Take-Income t m) for t in [0,7] and m in [0, 4]
+   ;;   t + m <= money-bag and t <= stock(t) and m <= stock(m)
+   (* 8 5)
+   ;; - (Take-Income-All)
+   ;;   money-bag == C
+   1
+   ;; - (Place Which Route)
+   ;;   supply is enough and route has empty spot
+   ;;   used for displaced and displacing
+   (* 2 total-routes)
+   ;; - (Move-Piece Which-Piece Route)
+   (* 30 total-routes)
+   ;; - (Swap-Piece Which-Piece Which-Piece) ;; If one house is empty, then swap is empty
+   ;;   From has me, To has me or empty
+   (* 30 30)
+   ;; - (Claim-Route Route Claim-Choice)
+   ;;   Route is full of me
+   (* total-routes
+      ;; Claim-Choice:
+      (+
+       ;; - (Establish-Office)
+       ;;   Office is available, merchant/trader in route, privilege is high enough
+       1
+       ;; - (Bonus:Establish-Extra-Office)
+       ;;   Have token, trader in route
+       1
+       ;; - (Improve-Ability)
+       ;;   City is ability and skill is not completed
+       1
+       ;; - (Claim-Medal Medal)
+       ;;   City is medal, merchant in route, privilege is high enough, medal is free
+       4
+       ))
+   ;; - (Bonus:Swap-Office City Office-Idx Office-Idx)
+   ;;   Offices in same city, have token
+   (* total-cities 4 4)
+   ;; - (Bonus:+3-Actions)
+   ;;   Have token
+   1
+   ;; - (Bonus:+4-Actions)
+   ;;   Have token
+   1
+   ;; - (Bonus:Improve-Skill Skill)
+   ;;   Have token, skill not completed
+   5
+   ;; - (Bonus:Remove-Three Route Route Route)
+   ;;   House have traders/merchants
+   #;(* (add1 total-routes) (add1 total-routes) (add1 total-routes))
+   ))
 
+;; XXX The action space is simply enormous for Hansa. Even with a lot
+;; of reductions, there are still about ~3000 plies per action and a
+;; player gets 2 to 5 actions, which means 9 million to 2.43 x 10^17
+;; possible turns. That's 38 billion gigabytes of states for one move.
