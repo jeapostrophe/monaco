@@ -160,9 +160,44 @@
        (define stp (aeval st (list-ref opts (read))))
        (loop stp)])))
 
-(play! ttt-who ttt-terminal? ttt-score
-       ttt-legal ttt-aeval ttt-render-st ttt-render-a
-       ttt-init)
+(module+ main
+  #;(play! ttt-who ttt-terminal? ttt-score
+           ttt-legal ttt-aeval ttt-render-st ttt-render-a
+           ttt-init))
+
+(require data/heap
+         struct-define)
+(struct mcts-node (p ia st q n cs) #:mutable)
+(define-struct-define define-mcts mcts-node)
+(define K (sqrt 2))
+(define (ln z) (log z 2))
+(define (mcts-score mn)
+  (define-mcts mn)
+  ;; Q(v')/N(v') + K \sqrt{ln N(v) / N(v')}
+  (+ (/ q n) (* K (sqrt (/ (ln (mcts-node-n p)) (ln n))))))
+(define (mcts<=? x y)
+  (>= (mcts-score x) (mcts-score y)))
+
+(define (mcts-play! who terminal? score legal aeval render-st render-a
+                    st0 human-id)
+  (let loop ([st st0] [gt (mcts-node #f st0 0.0 0.0 (make-heap mcts<=?))])
+    (draw-here (render-st st))
+    (cond
+      [(terminal? st)
+       (printf "Score is ~a\n" (score st))]
+      [else
+       (define opts (legal st))
+       (for ([o (in-list opts)]
+             [i (in-naturals)])
+         (printf "~a. ~a\n" i (render-a o)))
+       (printf "> ")
+       (define stp (aeval st (list-ref opts (read))))
+       (loop stp)])))
+
+(module+ main
+  (mcts-play! ttt-who ttt-terminal? ttt-score
+              ttt-legal ttt-aeval ttt-render-st ttt-render-a
+              ttt-init 0))
 
 ;; XXX Use adqc to write the functions?
 
