@@ -168,6 +168,9 @@
 (require data/heap
          struct-define)
 (struct mcts-node (p ia st q n cs) #:mutable)
+(define (make-mcts-node p ia st)
+  (mcts-node p ia st 0.0 0.0 (make-heap mcts<=?)))
+
 (define-struct-define define-mcts mcts-node)
 (define K (sqrt 2))
 (define (ln z) (log z 2))
@@ -180,7 +183,7 @@
 
 (define (mcts-play! who terminal? score legal aeval render-st render-a
                     st0 human-id)
-  (let loop ([st st0] [gt (mcts-node #f st0 0.0 0.0 (make-heap mcts<=?))])
+  (let loop ([st st0] [gt (make-mcts-node #f #f st0)])
     (draw-here (render-st st))
     (cond
       [(terminal? st)
