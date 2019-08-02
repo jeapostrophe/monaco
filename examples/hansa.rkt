@@ -269,3 +269,9 @@
 ;; of reductions, there are still about ~3000 plies per action and a
 ;; player gets 2 to 5 actions, which means 9 million to 2.43 x 10^17
 ;; possible turns. That's 38 billion gigabytes of states for one move.
+
+;; XXX I could make a set of goal-driven AIs.
+;; - Medals --- Tries to get the medals
+;; - Bonus --- Tries to end the game by getting bonus plates
+;; - Network --- Tries to connect the red cities and get keys
+;; - Blocker --- Gets the money bag and tries to block everyone else and get routes
