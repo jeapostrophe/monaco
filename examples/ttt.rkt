@@ -25,15 +25,17 @@ marks = (LSB) abcd efgh i
 (define slots (* rows cols))
 
 (define player-idx 0)
-(define X-start 1)
+(define X-start (+ player-idx 1))
 (define O-start (+ X-start slots))
 (define X-end O-start)
 (define O-end (+ O-start slots))
 
-(define init-state 0)
+(define ttt-init 0)
 
+(define (cell-idx r c)
+  (+ c (* r 3)))
 (define (cell r c)
-  (bit (+ c (* r 3))))
+  (bit (cell-idx r c)))
 
 (define (seq r c dr dc)
   (for/sum ([i (in-range 3)])
@@ -67,40 +69,85 @@ marks = (LSB) abcd efgh i
     [(_ code . more)
      #'(let () code (condlet . more))]))
 
-(define (ttt st)
+(define (ttt-active-player st)
+  (if (bitwise-bit-set? st player-idx) 1 0))
+
+(require raart
+         racket/format)
+(define (~b x w)
+  (~r x #:base 2 #:min-width w #:pad-string "0"))
+(define text:X (text "X"))
+(define text:O (text "O"))
+(define text:_ (text " "))
+(define (ttt-render st)
+  (define Xs (bitwise-bit-field st X-start X-end))
+  (define Os (bitwise-bit-field st O-start O-end))
+  (vappend
+   #:halign 'left   
+   (text (format "~a's turn"
+                 (case (ttt-active-player st)
+                   [(0) "O"]
+                   [(1) "X"])))   
+   (table
+    (for/list ([r (in-range rows)])
+      (for/list ([c (in-range cols)])
+        (define b (cell-idx r c))
+        (cond [(bitwise-bit-set? Xs b) text:X]
+              [(bitwise-bit-set? Os b) text:O]
+              [else text:_]))))))
+
+(define score:X (vector 0 1))
+(define score:O (vector 1 0))
+(define score:D (vector 0 0))
+(define (ttt-score st)
   (condlet
    (define Xs (bitwise-bit-field st X-start X-end))
-   [#:cond (winning? Xs) (vector 1 0)]
+   [#:cond (winning? Xs) (values #t score:X)]
    (define Os (bitwise-bit-field st O-start O-end))
-   [#:cond (winning? Os) (vector 0 1)]
+   [#:cond (winning? Os) (values #t score:O)]
    (define B (bitwise-ior Xs Os))
-   [#:cond (complete? B) (vector 0 0)]
-   (define x? (bitwise-bit-set? st player-idx))
-   (define st-other (bitwise-bit-flip st player-idx))
-   (define me-start (if x? X-start O-start))
-   (for/list ([i (in-range slots)]
-              #:unless (bitwise-bit-set? B i))
-     (cons i (bitwise-bit-set st-other (+ me-start i))))))
+   [#:cond (complete? B) (values #t score:D)]
+   (values #f score:D)))
+
+(define (ttt-next st)
+  (define Xs (bitwise-bit-field st X-start X-end))
+  (define Os (bitwise-bit-field st O-start O-end))
+  (define B (bitwise-ior Xs Os))
+  (define x? (bitwise-bit-set? st player-idx))
+  (define st-other (bitwise-bit-flip st player-idx))
+  (define me-start (if x? X-start O-start))
+  (for*/fold ([res '()])
+             ([r (in-range rows)]
+              [c (in-range cols)])
+    (define b (cell-idx r c))
+    (if (bitwise-bit-set? B b)
+      res
+      (cons (cons (cons r c) (bitwise-bit-set st-other (+ b me-start)))
+            res))))
 
 ;; Engine
 
 (define (show-mem)
   (printf "~a MB\n" (real->decimal-string (/ (current-memory-use) (* 1024 1024)))))
 
-(define (explore! choices st0)
-  (define VISITED? (make-hash))
+(define (play! activep score next render st0)
   (let loop ([st st0])
-    (condlet
-     [#:cond (hash-has-key? VISITED? st) 0]
-     (hash-set! VISITED? st #t)
-     (define opts (choices st))
-     [#:cond (vector? opts) 1]
-     (for/sum ([m*o (in-list opts)])
-       (loop (cdr m*o))))))
+    (draw-here (render st))
+    (define-values (done? sc) (score st))
+    (cond
+      [done?
+       (printf "Score is ~a\n" sc)]
+      [else
+       (define opts (next st))
+       (for ([o (in-list opts)]
+             [i (in-naturals)])
+         (printf "~a. ~a - ~a\n" i (car o) (~b (cdr o) (+ 1 (* 2 slots)))))
+       (printf "> ")
+       (define stp (cdr (list-ref opts (read))))
+       (loop stp)])))
 
-(show-mem)
-(time (explore! ttt init-state))
-(show-mem)
+(play! ttt-active-player ttt-score ttt-next ttt-render
+       ttt-init)
 
 ;; XXX Use adqc to write the functions?
 
