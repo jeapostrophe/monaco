@@ -2,6 +2,7 @@
 (require (for-syntax racket/base
                      syntax/parse)
          racket/match
+         racket/vector
          syntax/parse/define)
 
 ;; Library
@@ -167,35 +168,119 @@
 
 (require data/heap
          struct-define)
-(struct mcts-node (p ia st q n cs) #:mutable)
-(define (make-mcts-node p ia st)
-  (mcts-node p ia st 0.0 0.0 (make-heap mcts<=?)))
+(struct mcts-node (p ia st t? q n cs) #:mutable)
+(define (make-mcts-node terminal? p ia st)
+  (mcts-node p ia st (terminal? st) 0.0 0.0 #f))
 
 (define-struct-define define-mcts mcts-node)
 (define K (sqrt 2))
 (define (ln z) (log z 2))
 (define (mcts-score mn)
   (define-mcts mn)
+  (define pn (mcts-node-n p))
   ;; Q(v')/N(v') + K \sqrt{ln N(v) / N(v')}
-  (+ (/ q n) (* K (sqrt (/ (ln (mcts-node-n p)) (ln n))))))
+  (cond
+    [(or (zero? pn) (zero? n)) +inf.0]
+    [t? -inf.0]
+    [else (+ (/ q n) (* K (sqrt (/ (ln pn) (ln n)))))]))
 (define (mcts<=? x y)
   (>= (mcts-score x) (mcts-score y)))
 
+(define (mcts-choose aeval mn a)
+  (define-mcts mn)
+  (and cs
+       (for/or ([c (in-heap/consume! cs)])
+         (and (equal? a (mcts-node-ia c))
+              (set-mcts-node-p! c #f)
+              c))))
+
+(define (heap-min! h)
+  (begin0 (heap-min h)
+    (heap-remove-min! h)))
+
+(define (random-list-ref l)
+  (list-ref l (random (length l))))
+
+(define (mcts-simulate terminal? score legal aeval st)
+  (cond
+    [(terminal? st)
+     (vector-ref (score st) 1)]
+    [else
+     (mcts-simulate terminal? score legal aeval
+                    (aeval st (random-list-ref (legal st))))]))
+
+(define (mcts-step terminal? score legal aeval render-st
+                   mn simulate?)
+  (define-mcts mn)
+  (cond
+    ;; Has children, so select
+    [(and cs (not t?))
+     (define c (heap-min! cs))
+     #;(eprintf "Selecting child w/ score ~a out of ~a\n"
+                (mcts-score c)
+                (vector-map mcts-score (heap->vector cs)))
+     (define-values (cp Δq Δn)
+       (mcts-step terminal? score legal aeval render-st
+                  c simulate?))
+     (set! q (+ q Δq))
+     (set! n (+ n Δn))
+     (heap-add! cs cp)
+     (values mn Δq Δn)]
+    ;; We are the leaf to simulate
+    [(or t? simulate?)
+     ;; XXX Maybe simulate many times
+     #;(eprintf "Simulating from\n")
+     (define r (mcts-simulate terminal? score legal aeval st))
+     (values mn r 1)]
+    ;; No children, not simulation, so expand
+    [else
+     (set! cs (make-heap mcts<=?))
+     (for ([a (in-list (legal st))])
+       ;; XXX Maybe delay aeval until later
+       (heap-add! cs (make-mcts-node terminal? mn a (aeval st a))))
+     (mcts-step terminal? score legal aeval render-st
+                mn #t)]))
+
+(define (mcts-decide terminal? score legal aeval render-st
+                     mn k)
+  ;; XXX Base deadline on something else
+  (define deadline (+ (current-inexact-milliseconds) 17))
+  (define mnp
+    (let loop ([mn mn] [i 0])
+      (cond
+        [(< deadline (current-inexact-milliseconds))
+         (eprintf "Took ~a steps\n" i)
+         mn]
+        [else
+         (define-values (mnp Δq Δn)
+           (mcts-step terminal? score legal aeval render-st
+                      mn #f))
+         (loop mnp (add1 i))])))
+  (define mnpp (heap-min (mcts-node-cs mn)))
+  (define stp (mcts-node-st mnpp))
+  (k stp mnpp))
+
 (define (mcts-play! who terminal? score legal aeval render-st render-a
                     st0 human-id)
-  (let loop ([st st0] [gt (make-mcts-node #f #f st0)])
+  (let loop ([st st0] [gt (make-mcts-node terminal? #f #f st0)])
     (draw-here (render-st st))
     (cond
       [(terminal? st)
        (printf "Score is ~a\n" (score st))]
-      [else
+      [(= human-id (who st))
        (define opts (legal st))
        (for ([o (in-list opts)]
              [i (in-naturals)])
          (printf "~a. ~a\n" i (render-a o)))
        (printf "> ")
-       (define stp (aeval st (list-ref opts (read))))
-       (loop stp)])))
+       (define a (list-ref opts (read)))
+       (define stp (aeval st a))
+       (loop stp
+             (or (mcts-choose aeval gt a)
+                 (make-mcts-node terminal? #f #f stp)))]
+      [else
+       (mcts-decide terminal? score legal aeval render-st
+                    gt loop)])))
 
 (module+ main
   (mcts-play! ttt-who ttt-terminal? ttt-score
