@@ -60,18 +60,15 @@
     ;; Has children, so select
     [(and cs (not t?))
      (define c (heap-min! cs))
-     (define-values (cp Δq Δn)
-       (mcts-step terminal? score legal aeval render-st
-                  c simulate?))
+     (define Δq (mcts-step terminal? score legal aeval render-st
+                           c simulate?))
      (set! q (+ q Δq))
-     (set! n (+ n Δn))
-     (heap-add! cs cp)
-     (values mn Δq Δn)]
+     (set! n (+ n 1))
+     (heap-add! cs c)
+     Δq]
     ;; We are the leaf to simulate
     [(or t? simulate?)
-     ;; XXX Maybe simulate many times
-     (define r (mcts-simulate terminal? score legal aeval st))
-     (values mn r 1)]
+     (mcts-simulate terminal? score legal aeval st)]
     ;; No children, not simulation, so expand
     [else
      (set! cs (make-heap mcts<=?))
@@ -82,24 +79,18 @@
                 mn #t)]))
 
 (define (mcts-decide terminal? score legal aeval render-st
-                     mn k)
-  ;; XXX Base deadline on something else, like opponent's choosing
-  ;; time.
+                     deadline mn k)
   (show-mem)
-  (define deadline (+ (current-inexact-milliseconds) 17))
+  (let loop ([i 0])
+    (cond
+      [(< deadline (current-inexact-milliseconds))
+       (eprintf "Took ~a steps\n" i)
+       mn]
+      [else
+       (mcts-step terminal? score legal aeval render-st mn #f)
+       (loop (add1 i))]))
+  (show-mem)
   (define mnp
-    (let loop ([mn mn] [i 0])
-      (cond
-        [(< deadline (current-inexact-milliseconds))
-         (eprintf "Took ~a steps\n" i)
-         mn]
-        [else
-         (define-values (mnp Δq Δn)
-           (mcts-step terminal? score legal aeval render-st
-                      mn #f))
-         (loop mnp (add1 i))])))
-  (show-mem)
-  (define mnpp
     (heap-min (mcts-node-cs mn))
     #;
     (for/fold ([mnpp #f] [sc -inf.0] #:result mnpp)
@@ -108,8 +99,8 @@
       (if (<= sc aq)
         (values t aq)
         (values mnpp sc))))
-  (define stp (mcts-node-st mnpp))
-  (k stp mnpp))
+  (define stp (mcts-node-st mnp))
+  (k stp mnp))
 
 (define (mcts-play! who terminal? score legal aeval render-st render-a
                     st0 human-id)
@@ -133,6 +124,8 @@
                  (make-mcts-node terminal? #f #f stp)))]
       [else
        (mcts-decide terminal? score legal aeval render-st
+                    ;; XXX Base on opponent's time
+                    (+ (current-inexact-milliseconds) 17)
                     gt loop)])))
 
 ;; XXX Use adqc to write the functions?
