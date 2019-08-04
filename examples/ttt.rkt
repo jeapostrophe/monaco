@@ -90,7 +90,9 @@
 
 (define (ttt-render-a a)
   (match-define (cons r c) a)
-  (format "Select ~a,~a" (add1 r) (add1 c)))
+  (action (string-ref "qweasdzxc" (cell-idx r c))
+          (format "Select ~a,~a" (add1 r) (add1 c))
+          a))
 
 (define (ttt-legal st)
   (open-ttt st)
@@ -111,4 +113,3 @@
   (mcts-play! ttt-who ttt-terminal? ttt-score
               ttt-legal ttt-aeval ttt-render-st ttt-render-a
               ttt-init 0))
-

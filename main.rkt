@@ -4,7 +4,10 @@
          data/heap
          struct-define
          "util.rkt")
-(provide mcts-play!)
+(provide mcts-play!
+         (struct-out action))
+
+(struct action (key desc val))
 
 (define (show-mem)
   (printf "~a MB\n" (real->decimal-string (/ (current-memory-use) (* 1024 1024)))))
@@ -80,7 +83,6 @@
 
 (define (mcts-decide terminal? score legal aeval render-st
                      deadline mn k)
-  (show-mem)
   (let loop ([i 0])
     (cond
       [(< deadline (current-inexact-milliseconds))
@@ -89,16 +91,7 @@
       [else
        (mcts-step terminal? score legal aeval render-st mn #f)
        (loop (add1 i))]))
-  (show-mem)
-  (define mnp
-    (heap-min (mcts-node-cs mn))
-    #;
-    (for/fold ([mnpp #f] [sc -inf.0] #:result mnpp)
-              ([t (in-heap/consume! (mcts-node-cs mn))])
-      (define aq (mcts-average-q t))
-      (if (<= sc aq)
-        (values t aq)
-        (values mnpp sc))))
+  (define mnp (heap-min (mcts-node-cs mn)))
   (define stp (mcts-node-st mnp))
   (k stp mnp))
 
@@ -111,13 +104,16 @@
        (printf "Score is ~a\n" (score st))]
       [(= human-id (who st))
        (define opts (legal st))
-       (for ([o (in-list opts)]
-             [i (in-naturals)])
-         (printf "~a. ~a\n" i (render-a o)))
-       (printf "> ")
-       ;; XXX Make the game decide what the key for the action is so
-       ;; they are always consistent.
-       (define a (list-ref opts (read)))
+       (define k->val
+         (for/hasheq ([o (in-list opts)])
+           (values (action-key (render-a o)) o)))
+       (define k
+         (let read-loop ()
+           (printf "> ")
+           (define k (read-char))
+           (if (hash-has-key? k->val k) k
+               (read-loop))))
+       (define a (hash-ref k->val k))
        (define stp (aeval st a))
        (loop stp
              (or (mcts-choose aeval gt a)
@@ -129,12 +125,6 @@
                     gt loop)])))
 
 ;; XXX Use adqc to write the functions?
-
-;; XXX MCTS node, v, data:
-;; - s(v) --- Game State
-;; - a(v) --- Inducing action
-;; - Q(v) --- total reward
-;; - N(v) --- number of payouts
 
 ;; XXX The discussion of MCTS in https://arxiv.org/pdf/1805.09218.pdf
 ;; says that there is a fixed set of actions. But sometimes, actions
