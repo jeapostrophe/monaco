@@ -60,9 +60,6 @@
     ;; Has children, so select
     [(and cs (not t?))
      (define c (heap-min! cs))
-     #;(eprintf "Selecting child w/ score ~a out of ~a\n"
-                (mcts-score c)
-                (vector-map mcts-score (heap->vector cs)))
      (define-values (cp Δq Δn)
        (mcts-step terminal? score legal aeval render-st
                   c simulate?))
@@ -73,7 +70,6 @@
     ;; We are the leaf to simulate
     [(or t? simulate?)
      ;; XXX Maybe simulate many times
-     #;(eprintf "Simulating from\n")
      (define r (mcts-simulate terminal? score legal aeval st))
      (values mn r 1)]
     ;; No children, not simulation, so expand
@@ -87,7 +83,7 @@
 
 (define (mcts-decide terminal? score legal aeval render-st
                      mn k)
-  ;; XXX Base deadline on something else, like opponent's playing
+  ;; XXX Base deadline on something else, like opponent's choosing
   ;; time.
   (show-mem)
   (define deadline (+ (current-inexact-milliseconds) 17))
@@ -104,10 +100,12 @@
          (loop mnp (add1 i))])))
   (show-mem)
   (define mnpp
+    (heap-min (mcts-node-cs mn))
+    #;
     (for/fold ([mnpp #f] [sc -inf.0] #:result mnpp)
               ([t (in-heap/consume! (mcts-node-cs mn))])
       (define aq (mcts-average-q t))
-      (if (< sc aq)
+      (if (<= sc aq)
         (values t aq)
         (values mnpp sc))))
   (define stp (mcts-node-st mnpp))
