@@ -115,6 +115,8 @@
                       mn #f))
          (loop mnp (add1 i))])))
   (show-mem)
+  ;; XXX This might not be the best one, because it is really the one
+  ;; best to EXPLORE not EXPLOIT.
   (define mnpp (heap-min (mcts-node-cs mn)))
   (define stp (mcts-node-st mnpp))
   (k stp mnpp))
@@ -270,3 +272,39 @@
 ;; XXX Isolation: A 6x8 grid with two pawns where each turn you move
 ;; your pawn and then remove a square from the board. You lose if you
 ;; cannot move.
+
+;; XXX Caylus: 35 spots to choose and 26 different buildings
+
+;; XXX Hansa Teutonica (see other file) there are billions of options.
+
+;; XXX Tigris & Euphrates: 11x16 spots, 4 different kinds of tiles,
+;; plus 2 catastrophe tiles, 4 leaders with ability to remove one
+;; also. Consider this as 11x16+1 spots with 9 things to place (tiles,
+;; catastrophe, and leaders.) Plus, you get two actions, so that's 2.5
+;; million possibilities.
+
+;; XXX HT + T&E --- Abstract the actions into meta-actions like (HT)
+;; "Open a new route", "Finish a route", and so on or (T&E) "Cause a
+;; revolt", "Cause a war", "Establish kingdom", or so on. Then select
+;; among possible ways to do that thing. I found some papers about
+;; these ideas, but haven't read them yet:
+;; https://project.dke.maastrichtuniversity.nl/games/files/msc/Roelofs_thesis.pdf
+;; and https://arxiv.org/pdf/1805.09613.pdf
+
+;; XXX HT (based on above): Another way is to think about a
+;; "strategic" and a "tactical" AI. The strategic one chooses which
+;; cities/offices it will target and the tactical one takes that goal
+;; and determines the best way to get it. The hard part is
+;; incorporating reward into things... what does the money-bag give
+;; you? It really gives you more tactical options, but how do you
+;; quantify that? It is clear that the key and medal give you points,
+;; the liber sophia gives you a merchant, privilege gives you options,
+;; but the money bag just gives you more moveable pieces. Perhaps I could quantify things by keeping track of how many turns it would take to claim a route/city. So, in the beginning you have 2 units per turn, but if you get displaced it is as if you have 3 units, because can put one and then move.
+
+;; Roelofs ---
+;; https://project.dke.maastrichtuniversity.nl/games/files/msc/Roelofs_thesis.pdf
+;; --- has a big idea on page 24 and 26. There are multiple dimensions
+;; of decisions (move, complete, and so on) and you first select a
+;; dimension, then an action from that, and so on until you have come
+;; to a complete action. Because of the asymmetric exploration of the
+;; tree, you'll ignore unpromising sub-actions/dimension orderings. This requires "partial move completion" to take an incomplete action into a complete one. (In the experiment, the dimensions are the nodes to move soldiers from.)
