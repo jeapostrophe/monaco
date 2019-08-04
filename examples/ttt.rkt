@@ -108,11 +108,6 @@
   (bitwise-bit-set st-other (+ (cell-idx r c) me-start)))
 
 (module+ main
-  #;(play! ttt-who ttt-terminal? ttt-score
-           ttt-legal ttt-aeval ttt-render-st ttt-render-a
-           ttt-init))
-
-(module+ main
   (mcts-play! ttt-who ttt-terminal? ttt-score
               ttt-legal ttt-aeval ttt-render-st ttt-render-a
               ttt-init 0))

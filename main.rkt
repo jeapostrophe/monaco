@@ -4,26 +4,10 @@
          data/heap
          struct-define
          "util.rkt")
-(provide play!
-         mcts-play!)
+(provide mcts-play!)
 
 (define (show-mem)
   (printf "~a MB\n" (real->decimal-string (/ (current-memory-use) (* 1024 1024)))))
-
-(define (play! who terminal? score legal aeval render-st render-a st0)
-  (let loop ([st st0])
-    (draw-here (render-st st))
-    (cond
-      [(terminal? st)
-       (printf "Score is ~a\n" (score st))]
-      [else
-       (define opts (legal st))
-       (for ([o (in-list opts)]
-             [i (in-naturals)])
-         (printf "~a. ~a\n" i (render-a o)))
-       (printf "> ")
-       (define stp (aeval st (list-ref opts (read))))
-       (loop stp)])))
 
 (struct mcts-node (p ia st t? q n cs) #:mutable)
 (define (make-mcts-node terminal? p ia st)
@@ -32,10 +16,13 @@
 (define-struct-define define-mcts mcts-node)
 (define K (sqrt 2))
 (define (ln z) (log z 2))
+
+(define (mcts-average-q mn)
+  (define-mcts mn)
+  (if (zero? n) -inf.0 (/ q n)))
 (define (mcts-score mn)
   (define-mcts mn)
   (define pn (mcts-node-n p))
-  ;; Q(v')/N(v') + K \sqrt{ln N(v) / N(v')}
   (cond
     [(or (zero? pn) (zero? n)) +inf.0]
     [t? -inf.0]
@@ -100,7 +87,8 @@
 
 (define (mcts-decide terminal? score legal aeval render-st
                      mn k)
-  ;; XXX Base deadline on something else
+  ;; XXX Base deadline on something else, like opponent's playing
+  ;; time.
   (show-mem)
   (define deadline (+ (current-inexact-milliseconds) 17))
   (define mnp
@@ -115,9 +103,13 @@
                       mn #f))
          (loop mnp (add1 i))])))
   (show-mem)
-  ;; XXX This might not be the best one, because it is really the one
-  ;; best to EXPLORE not EXPLOIT.
-  (define mnpp (heap-min (mcts-node-cs mn)))
+  (define mnpp
+    (for/fold ([mnpp #f] [sc -inf.0] #:result mnpp)
+              ([t (in-heap/consume! (mcts-node-cs mn))])
+      (define aq (mcts-average-q t))
+      (if (< sc aq)
+        (values t aq)
+        (values mnpp sc))))
   (define stp (mcts-node-st mnpp))
   (k stp mnpp))
 
