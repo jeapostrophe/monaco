@@ -19,7 +19,7 @@
 (define ttt-init 0)
 
 (define (cell-idx r c)
-  (+ c (* r 3)))
+  (+ c (* r cols)))
 (define (cell r c)
   (bit (cell-idx r c)))
 
@@ -79,8 +79,8 @@
 (define (ttt-score st)
   (open-ttt st)
   (cond
-    [(winning? Xs) (vector 0 1)]
-    [(winning? Os) (vector 1 0)]
+    [(winning? Xs) (vector -1 +1)]
+    [(winning? Os) (vector +1 -1)]
     [else (vector 0 0)]))
 
 (define all-actions

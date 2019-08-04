@@ -1,8 +1,12 @@
 #lang racket/base
 (require (for-syntax racket/base
                      syntax/parse)
+         racket/format
          syntax/parse/define)
 (provide (all-defined-out))
+
+(define (~b x w)
+  (~r x #:min-width w #:pad-string "0" #:base 2))
 
 (define-syntax (condlet stx)
   (syntax-parse stx
@@ -32,3 +36,5 @@
     (begin
       (define output e) ...
       (define this-output output) ...)))
+
+

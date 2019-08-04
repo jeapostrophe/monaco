@@ -1,5 +1,6 @@
 #lang racket/base
 (require raart
+         racket/math
          racket/vector
          data/heap
          struct-define
@@ -35,11 +36,14 @@
 
 (define (mcts-choose aeval mn a)
   (define-mcts mn)
-  (and cs
-       (for/or ([c (in-heap/consume! cs)])
-         (and (equal? a (mcts-node-ia c))
-              (set-mcts-node-p! c #f)
-              c))))
+  (cond
+    [cs
+     (for/or ([c (in-heap/consume! cs)])
+       (and (equal? a (mcts-node-ia c))
+            (set-mcts-node-p! c #f)
+            c))]
+    [else
+     #f]))
 
 (define (heap-min! h)
   (begin0 (heap-min h)
@@ -51,6 +55,7 @@
 (define (mcts-simulate terminal? score legal aeval st)
   (cond
     [(terminal? st)
+     ;; XXX hack
      (vector-ref (score st) 1)]
     [else
      (mcts-simulate terminal? score legal aeval
@@ -91,13 +96,21 @@
       [else
        (mcts-step terminal? score legal aeval render-st mn #f)
        (loop (add1 i))]))
-  (define mnp (heap-min (mcts-node-cs mn)))
+  (define mnp
+    #;(heap-min (mcts-node-cs mn))
+    (vector-argmax mcts-average-q (heap->vector (mcts-node-cs mn))))
   (define stp (mcts-node-st mnp))
   (k stp mnp))
+
+(define (real->decimal-string* r)
+  (if (nan? r) "NAN" (real->decimal-string r)))
 
 (define (mcts-play! who terminal? score legal aeval render-st render-a
                     st0 human-id)
   (let loop ([st st0] [gt (make-mcts-node terminal? #f #f st0)])
+    (printf "Expected computer value: ~a\n"
+            (real->decimal-string*
+             (/ (mcts-node-q gt) (mcts-node-n gt))))
     (draw-here (render-st st))
     (cond
       [(terminal? st)
@@ -109,7 +122,7 @@
            (values (action-key (render-a o)) o)))
        (define k
          (let read-loop ()
-           (printf "> ")
+           (printf "> ") (flush-output)
            (define k (read-char))
            (if (hash-has-key? k->val k) k
                (read-loop))))
@@ -117,11 +130,12 @@
        (define stp (aeval st a))
        (loop stp
              (or (mcts-choose aeval gt a)
-                 (make-mcts-node terminal? #f #f stp)))]
+                 (begin (eprintf "Node did not exist in GT\n")
+                        (make-mcts-node terminal? #f #f stp))))]
       [else
        (mcts-decide terminal? score legal aeval render-st
                     ;; XXX Base on opponent's time
-                    (+ (current-inexact-milliseconds) 17)
+                    (+ (current-inexact-milliseconds) 5000)
                     gt loop)])))
 
 ;; XXX Use adqc to write the functions?
@@ -241,10 +255,6 @@
 ;; XXX Connect-4: A 7-column x 6-row grid where you try to get 4 in a
 ;; row. Solved where first player wins if they play in the middle
 ;; column.
-
-;; XXX Isolation: A 6x8 grid with two pawns where each turn you move
-;; your pawn and then remove a square from the board. You lose if you
-;; cannot move.
 
 ;; XXX Caylus: 35 spots to choose and 26 different buildings
 
