@@ -6,13 +6,6 @@
 (provide mcts-play!
          (struct-out action))
 
-(define (random-list-ref l)
-  (list-ref l (random (length l))))
-(define-syntax-rule (while c e ...)
-  (let loop () (when c e ... (loop))))
-(define-syntax-rule (until c e ...)
-  (while (not c) e ...))
-
 (struct action (key desc val))
 
 (define (show-mem)
@@ -31,10 +24,9 @@
   (define pv (mcts-node-v p))
   (cond
     [(or (zero? pv) (zero? v)) +inf.0]
-    #;[t? -inf.0] ;; XXX
     [else (+ (/ w v) (sqrt (* 2 (/ (log pv) (log v)))))]))
 
-(define (mcts-decide terminal? score legal aeval
+(define (mcts-decide terminal? score legal random-legal aeval
                      deadline mn st)
   (define i 0)
   (until (< deadline (current-inexact-milliseconds))
@@ -57,8 +49,7 @@
       (set! mni new))
     ;; Rollout
     (until (terminal? sti)
-      ;; XXX replace with random-legal
-      (set! sti (aeval sti (random-list-ref (legal sti)))))
+      (set! sti (aeval sti (random-legal sti))))
     ;; XXX hack on 1
     (define r (vector-ref (score sti) 1))
     ;; Backpropagate
@@ -69,7 +60,7 @@
     ;; Count
     (set! i (add1 i)))
   (eprintf "Took ~a steps\n" i)
-  (define scs (sort (mcts-node-cs mn) >= #:key mcts-average-w #;mcts-node-v))
+  (define scs (sort (mcts-node-cs mn) >= #:key #;mcts-average-w mcts-node-v))
   (set-mcts-node-cs! mn scs)
   (mcts-node-ia (car scs)))
 
@@ -84,7 +75,7 @@
 (define (real->decimal-string* r)
   (if (nan? r) "NAN" (real->decimal-string r)))
 
-(define (mcts-play! who terminal? score legal aeval render-st render-a
+(define (mcts-play! who terminal? score legal random-legal aeval render-st render-a
                     st0 human-id)
   (let/ec esc
     (let loop ([st st0] [gt (mcts-choose legal #f #f st0)])
@@ -110,9 +101,9 @@
                    (read-loop))))
            (hash-ref k->val k)]
           [else
-           (mcts-decide terminal? score legal aeval
+           (mcts-decide terminal? score legal random-legal aeval
                         ;; XXX Base on opponent's time
-                        (+ (current-inexact-milliseconds) 5000)
+                        (+ (current-inexact-milliseconds) 100)
                         gt st)]))
       (define stp (aeval st a))
       (loop stp (mcts-choose legal gt a stp)))))

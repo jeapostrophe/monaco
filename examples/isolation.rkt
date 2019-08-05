@@ -57,11 +57,43 @@
                   [phase 'move]
                   [board (bitwise-bit-set (iso-board st) (cell-idx r c))])]))
 
-(define (iso-legal st)
+(define-functor (open-iso st)
   (define B
     (for/fold ([B (iso-board st)]) ([p (in-vector (iso-ps st))])
       (match-define (cons r c) p)
-      (bitwise-bit-set B (cell-idx r c))))
+      (bitwise-bit-set B (cell-idx r c)))))
+;; XXX Some way to derive this
+(define (iso-random-legal st)
+  (open-iso st)
+  (match (iso-phase st)
+    ['move
+     (match-define (cons r c) (vector-ref (iso-ps st) (iso-who st)))
+     (let loop ()
+       (define dr (- (random 3) 1))
+       (define dc (- (random 3) 1))
+       (define rp (+ dr r))
+       (define cp (+ dc c))
+       (if (and (not (= dr dc 0))
+                (<= 0 rp) (<= 0 cp)
+                (< rp rows) (< cp cols)
+                (not (bitwise-bit-set? B (cell-idx rp cp))))
+         (a:move dr dc)
+         (loop)))]
+    ['select-row
+     (let loop ()
+       (define r (random rows))
+       (if (for/or ([c (in-range cols)])
+             (not (bitwise-bit-set? B (cell-idx r c))))
+         (a:select-row r)
+         (loop)))]
+    [(cons 'select-col r)
+     (let loop ()
+       (define c (random cols))
+       (if (bitwise-bit-set? B (cell-idx r c))
+         (loop)
+         (a:select-col c)))]))
+(define (iso-legal st)
+  (open-iso st)
   (match (iso-phase st)
     ['move
      (match-define (cons r c) (vector-ref (iso-ps st) (iso-who st)))
@@ -123,5 +155,6 @@
 
 (module+ main
   (mcts-play! iso-who iso-terminal? iso-score
-              iso-legal iso-aeval iso-render-st iso-render-a
+              iso-legal iso-random-legal
+              iso-aeval iso-render-st iso-render-a
               iso-init 0))
