@@ -5,6 +5,9 @@
          syntax/parse/define)
 (provide (all-defined-out))
 
+(define (show-mem)
+  (printf "~a MB\n" (real->decimal-string (/ (current-memory-use) (* 1024 1024)))))
+
 (define (~b x w)
   (~r x #:min-width w #:pad-string "0" #:base 2))
 

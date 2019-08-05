@@ -24,8 +24,8 @@
 
 (define (iso-score st)
   (if (zero? (iso-who st))
-    (vector -1 +1)
-    (vector +1 -1)))
+    (vector  0.0 +1.0)
+    (vector +1.0  0.0)))
 
 (struct a:move (dr dc) #:prefab)
 (struct a:select-row (r) #:prefab)

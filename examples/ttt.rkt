@@ -79,9 +79,9 @@
 (define (ttt-score st)
   (open-ttt st)
   (cond
-    [(winning? Xs) (vector -1 +1)]
-    [(winning? Os) (vector +1 -1)]
-    [else (vector 0 0)]))
+    [(winning? Xs) (vector  0.0  1.0)]
+    [(winning? Os) (vector  1.0  0.0)]
+    [else          (vector  0.5  0.5)]))
 
 (define all-actions
   (for*/list ([r (in-range rows)]

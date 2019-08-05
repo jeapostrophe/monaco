@@ -1,15 +1,13 @@
 #lang racket/base
 (require raart
          racket/math
+         racket/list
          struct-define
          "util.rkt")
 (provide mcts-play!
          (struct-out action))
 
 (struct action (key desc val))
-
-(define (show-mem)
-  (printf "~a MB\n" (real->decimal-string (/ (current-memory-use) (* 1024 1024)))))
 
 (struct mcts-node (p ia cs w v um) #:mutable)
 (define-struct-define define-mcts mcts-node)
@@ -26,6 +24,20 @@
     [(or (zero? pv) (zero? v)) +inf.0]
     [else (+ (/ w v) (sqrt (* 2 (/ (log pv) (log v)))))]))
 
+(define (prob-ref l % get-num denom)
+  (when (empty? l)
+    (error 'prob-ref "Empty!"))
+  (eprintf "Selecting ~a from ~a\n"
+           % (map (λ (x) (exact->inexact (/ (get-num x) denom)))
+                  l))
+  (define top (car l))
+  (define top% (/ (get-num top) denom))
+  (cond [(<= % top%)
+         (eprintf "Chose ~a\n" top%)
+         top]
+        [else
+         (prob-ref (cdr l) (- % top%) get-num denom)]))
+
 (define (mcts-decide terminal? score legal random-legal aeval
                      deadline mn st)
   (define i 0)
@@ -34,17 +46,16 @@
     (define mni mn)
     ;; Selection
     (while (and (null? (mcts-node-um mni))
-                (not (null? (mcts-node-cs mni))))
-      (define ncs (sort (mcts-node-cs mni) >= #:key mcts-node-score))
-      (set-mcts-node-cs! mni ncs)
-      (set! mni (car ncs))
+                (cons? (mcts-node-cs mni)))
+      (set! mni (argmax mcts-node-score (mcts-node-cs mni)))
       (set! sti (aeval sti (mcts-node-ia mni))))
     ;; Expansion
     (unless (null? (mcts-node-um mni))
-      (define m (random-list-ref (mcts-node-um mni)))
+      ;; XXX Replace car/cdr with efficient random splice-out
+      (define m (car (mcts-node-um mni)))
+      (set-mcts-node-um! mni (cdr (mcts-node-um mni)))
       (set! sti (aeval sti m))
       (define new (make-node legal mni m sti))
-      (set-mcts-node-um! mni (remove m (mcts-node-um mni)))
       (set-mcts-node-cs! mni (cons new (mcts-node-cs mni)))
       (set! mni new))
     ;; Rollout
@@ -53,16 +64,18 @@
     ;; XXX hack on 1
     (define r (vector-ref (score sti) 1))
     ;; Backpropagate
-    (while (mcts-node-p mni)
+    (while mni
       (set-mcts-node-w! mni (+ r (mcts-node-w mni)))
       (set-mcts-node-v! mni (add1 (mcts-node-v mni)))
       (set! mni (mcts-node-p mni)))
     ;; Count
     (set! i (add1 i)))
   (eprintf "Took ~a steps\n" i)
-  (define scs (sort (mcts-node-cs mn) >= #:key #;mcts-average-w mcts-node-v))
-  (set-mcts-node-cs! mn scs)
-  (mcts-node-ia (car scs)))
+  (mcts-node-ia
+   #;(prob-ref (mcts-node-cs mn) (random) mcts-node-v (mcts-node-v mn))
+   (argmax mcts-node-w ;; Max Child
+           #;mcts-node-v ;; Robust Child
+           (mcts-node-cs mn))))
 
 (define (mcts-choose legal p ia st)
   (or (and p
