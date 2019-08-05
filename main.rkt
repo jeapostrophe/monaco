@@ -98,7 +98,8 @@
        (loop (add1 i))]))
   (define mnp
     #;(heap-min (mcts-node-cs mn))
-    (vector-argmax mcts-average-q (heap->vector (mcts-node-cs mn))))
+    (vector-argmax mcts-average-q (heap->vector (mcts-node-cs mn)))
+    #;(vector-argmax mcts-node-n (heap->vector (mcts-node-cs mn))))
   (define stp (mcts-node-st mnp))
   (k stp mnp))
 
