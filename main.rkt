@@ -1,143 +1,121 @@
 #lang racket/base
 (require raart
          racket/math
-         racket/vector
-         data/heap
          struct-define
          "util.rkt")
 (provide mcts-play!
          (struct-out action))
+
+(define (random-list-ref l)
+  (list-ref l (random (length l))))
+(define-syntax-rule (while c e ...)
+  (let loop () (when c e ... (loop))))
+(define-syntax-rule (until c e ...)
+  (while (not c) e ...))
 
 (struct action (key desc val))
 
 (define (show-mem)
   (printf "~a MB\n" (real->decimal-string (/ (current-memory-use) (* 1024 1024)))))
 
-(struct mcts-node (p ia st t? q n cs) #:mutable)
-(define (make-mcts-node terminal? p ia st)
-  (mcts-node p ia st (terminal? st) 0.0 0.0 #f))
-
+(struct mcts-node (p ia cs w v um) #:mutable)
 (define-struct-define define-mcts mcts-node)
-(define K (sqrt 2))
-(define (ln z) (log z 2))
+(define (make-node legal p ia st)
+  (mcts-node p ia '() 0.0 0.0 (legal st)))
 
-(define (mcts-average-q mn)
+(define (mcts-average-w mn)
   (define-mcts mn)
-  (if (zero? n) -inf.0 (/ q n)))
-(define (mcts-score mn)
+  (if (zero? v) -inf.0 (/ w v)))
+(define (mcts-node-score mn)
   (define-mcts mn)
-  (define pn (mcts-node-n p))
+  (define pv (mcts-node-v p))
   (cond
-    [(or (zero? pn) (zero? n)) +inf.0]
-    [t? -inf.0]
-    [else (+ (/ q n) (* K (sqrt (/ (ln pn) (ln n)))))]))
-(define (mcts<=? x y)
-  (>= (mcts-score x) (mcts-score y)))
+    [(or (zero? pv) (zero? v)) +inf.0]
+    #;[t? -inf.0] ;; XXX
+    [else (+ (/ w v) (sqrt (* 2 (/ (log pv) (log v)))))]))
 
-(define (mcts-choose aeval mn a)
-  (define-mcts mn)
-  (cond
-    [cs
-     (for/or ([c (in-heap/consume! cs)])
-       (and (equal? a (mcts-node-ia c))
-            (set-mcts-node-p! c #f)
-            c))]
-    [else
-     #f]))
+(define (mcts-decide terminal? score legal aeval
+                     deadline mn st)
+  (define i 0)
+  (until (< deadline (current-inexact-milliseconds))
+    (define sti st)
+    (define mni mn)
+    ;; Selection
+    (while (and (null? (mcts-node-um mni))
+                (not (null? (mcts-node-cs mni))))
+      (define ncs (sort (mcts-node-cs mni) >= #:key mcts-node-score))
+      (set-mcts-node-cs! mni ncs)
+      (set! mni (car ncs))
+      (set! sti (aeval sti (mcts-node-ia mni))))
+    ;; Expansion
+    (unless (null? (mcts-node-um mni))
+      (define m (random-list-ref (mcts-node-um mni)))
+      (set! sti (aeval sti m))
+      (define new (make-node legal mni m sti))
+      (set-mcts-node-um! mni (remove m (mcts-node-um mni)))
+      (set-mcts-node-cs! mni (cons new (mcts-node-cs mni)))
+      (set! mni new))
+    ;; Rollout
+    (until (terminal? sti)
+      ;; XXX replace with random-legal
+      (set! sti (aeval sti (random-list-ref (legal sti)))))
+    ;; XXX hack on 1
+    (define r (vector-ref (score sti) 1))
+    ;; Backpropagate
+    (while (mcts-node-p mni)
+      (set-mcts-node-w! mni (+ r (mcts-node-w mni)))
+      (set-mcts-node-v! mni (add1 (mcts-node-v mni)))
+      (set! mni (mcts-node-p mni)))
+    ;; Count
+    (set! i (add1 i)))
+  (eprintf "Took ~a steps\n" i)
+  (define scs (sort (mcts-node-cs mn) >= #:key mcts-average-w #;mcts-node-v))
+  (set-mcts-node-cs! mn scs)
+  (mcts-node-ia (car scs)))
 
-(define (heap-min! h)
-  (begin0 (heap-min h)
-    (heap-remove-min! h)))
-
-(define (random-list-ref l)
-  (list-ref l (random (length l))))
-
-(define (mcts-simulate terminal? score legal aeval st)
-  (cond
-    [(terminal? st)
-     ;; XXX hack
-     (vector-ref (score st) 1)]
-    [else
-     (mcts-simulate terminal? score legal aeval
-                    (aeval st (random-list-ref (legal st))))]))
-
-(define (mcts-step terminal? score legal aeval render-st
-                   mn simulate?)
-  (define-mcts mn)
-  (cond
-    ;; Has children, so select
-    [(and cs (not t?))
-     (define c (heap-min! cs))
-     (define Δq (mcts-step terminal? score legal aeval render-st
-                           c simulate?))
-     (set! q (+ q Δq))
-     (set! n (+ n 1))
-     (heap-add! cs c)
-     Δq]
-    ;; We are the leaf to simulate
-    [(or t? simulate?)
-     (mcts-simulate terminal? score legal aeval st)]
-    ;; No children, not simulation, so expand
-    [else
-     (set! cs (make-heap mcts<=?))
-     (for ([a (in-list (legal st))])
-       ;; XXX Maybe delay aeval until later
-       (heap-add! cs (make-mcts-node terminal? mn a (aeval st a))))
-     (mcts-step terminal? score legal aeval render-st
-                mn #t)]))
-
-(define (mcts-decide terminal? score legal aeval render-st
-                     deadline mn k)
-  (let loop ([i 0])
-    (cond
-      [(< deadline (current-inexact-milliseconds))
-       (eprintf "Took ~a steps\n" i)
-       mn]
-      [else
-       (mcts-step terminal? score legal aeval render-st mn #f)
-       (loop (add1 i))]))
-  (define mnp
-    #;(heap-min (mcts-node-cs mn))
-    (vector-argmax mcts-average-q (heap->vector (mcts-node-cs mn)))
-    #;(vector-argmax mcts-node-n (heap->vector (mcts-node-cs mn))))
-  (define stp (mcts-node-st mnp))
-  (k stp mnp))
+(define (mcts-choose legal p ia st)
+  (or (and p
+           (for/or ([c (in-list (mcts-node-cs p))])
+             (and (equal? ia (mcts-node-ia c))
+                  (set-mcts-node-p! c #f)
+                  c)))
+      (make-node legal p ia st)))
 
 (define (real->decimal-string* r)
   (if (nan? r) "NAN" (real->decimal-string r)))
 
 (define (mcts-play! who terminal? score legal aeval render-st render-a
                     st0 human-id)
-  (let loop ([st st0] [gt (make-mcts-node terminal? #f #f st0)])
-    (printf "Expected computer value: ~a\n"
-            (real->decimal-string*
-             (/ (mcts-node-q gt) (mcts-node-n gt))))
-    (draw-here (render-st st))
-    (cond
-      [(terminal? st)
-       (printf "Score is ~a\n" (score st))]
-      [(= human-id (who st))
-       (define opts (legal st))
-       (define k->val
-         (for/hasheq ([o (in-list opts)])
-           (values (action-key (render-a o)) o)))
-       (define k
-         (let read-loop ()
-           (printf "> ") (flush-output)
-           (define k (read-char))
-           (if (hash-has-key? k->val k) k
-               (read-loop))))
-       (define a (hash-ref k->val k))
-       (define stp (aeval st a))
-       (loop stp
-             (or (mcts-choose aeval gt a)
-                 (begin (eprintf "Node did not exist in GT\n")
-                        (make-mcts-node terminal? #f #f stp))))]
-      [else
-       (mcts-decide terminal? score legal aeval render-st
-                    ;; XXX Base on opponent's time
-                    (+ (current-inexact-milliseconds) 5000)
-                    gt loop)])))
+  (let/ec esc
+    (let loop ([st st0] [gt (mcts-choose legal #f #f st0)])
+      (printf "Expected computer value: ~a\n"
+              (real->decimal-string*
+               (/ (mcts-node-w gt) (mcts-node-v gt))))
+      (draw-here (render-st st))
+      (define a
+        (cond
+          [(terminal? st)
+           (printf "Score is ~a\n" (score st))
+           (esc)]
+          [(= human-id (who st))
+           (define opts (legal st))
+           (define k->val
+             (for/hasheq ([o (in-list opts)])
+               (values (action-key (render-a o)) o)))
+           (define k
+             (let read-loop ()
+               (printf "> ") (flush-output)
+               (define k (read-char))
+               (if (hash-has-key? k->val k) k
+                   (read-loop))))
+           (hash-ref k->val k)]
+          [else
+           (mcts-decide terminal? score legal aeval
+                        ;; XXX Base on opponent's time
+                        (+ (current-inexact-milliseconds) 5000)
+                        gt st)]))
+      (define stp (aeval st a))
+      (loop stp (mcts-choose legal gt a stp)))))
 
 ;; XXX Use adqc to write the functions?
 
