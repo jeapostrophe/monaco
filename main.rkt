@@ -9,13 +9,13 @@
 
 (struct action (key desc val))
 
-;;   p = parent (could be stored in continuation)
-;;  ia = initiating action
-;;  cs = children
-;;   w = reward
-;;   v = visits
-;;  um = un-explored actions
-;; who = player who makes decision / player who's reward counts
+;;     p = parent (could be stored in continuation)
+;; 1  ia = initiating action
+;; 4  cs = children
+;; 4   w = reward
+;; 4   v = visits
+;; 4  um = un-explored actions
+;; 1 who = player who makes decision / player who's reward counts
 (struct mcts-node (p ia cs w v um who) #:mutable)
 (define-struct-define define-mcts mcts-node)
 (define (make-node who legal p ia st)
