@@ -94,14 +94,6 @@
           (format "Select ~a,~a" (add1 r) (add1 c))
           a))
 
-(define (ttt-random-legal st)
-  (open-ttt st)
-  (let loop ()
-    (define r (random rows))
-    (define c (random cols))
-    (if (bitwise-bit-set? B (cell-idx r c))
-      (loop)
-      (cons r c))))
 (define (ttt-legal st)
   (open-ttt st)
   (filter
@@ -119,6 +111,6 @@
 
 (module+ main
   (mcts-play! ttt-who ttt-terminal? ttt-score
-              ttt-legal ttt-random-legal
-              ttt-aeval ttt-render-st ttt-render-a
+              ttt-legal ttt-aeval
+              ttt-render-st ttt-render-a
               ttt-init 0))

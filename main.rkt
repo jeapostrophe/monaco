@@ -30,7 +30,7 @@
      ;; XXX No `c'
      (sqrt (* 2.0 (/ (log (mcts-node-v p)) v)))))
 
-(define (mcts-decide who terminal? score legal random-legal aeval
+(define (mcts-decide who terminal? score legal aeval
                      deadline mn st)
   (define i 0)
   (until (< deadline (current-inexact-milliseconds))
@@ -57,7 +57,7 @@
       ;; tried number in the node (instead of a pointer in the um
       ;; field), but I'll have to have some terminal value like 0 or
       ;; 255.
-      (set! sti (aeval sti (random-legal sti))))
+      (set! sti (aeval sti (random-list-ref (legal sti)))))
     (define fsc (score sti))
     ;; Backup
     (while mni
@@ -86,7 +86,7 @@
 (define (real->decimal-string* r)
   (if (nan? r) "NAN" (real->decimal-string r)))
 
-(define (mcts-play! who terminal? score legal random-legal aeval render-st render-a st0 human-id)
+(define (mcts-play! who terminal? score legal aeval render-st render-a st0 human-id)
   (let/ec esc
     (let loop ([st st0] [mgt #f])
       (define gt (or mgt (make-node who legal #f #f st)))
@@ -109,12 +109,13 @@
              (let read-loop ()
                (printf "> ") (flush-output)
                (define k (read-char))
-               (if (hash-has-key? k->val k) k
-                   (read-loop))))
+               (cond
+                 [(hash-has-key? k->val k) k]
+                 [else (read-loop)])))
            (hash-ref k->val k)]
           [else
            (mcts-decide
-            who terminal? score legal random-legal aeval
+            who terminal? score legal aeval
             ;; XXX Base on opponent's time
             (+ (current-inexact-milliseconds) 100)
             gt st)]))
