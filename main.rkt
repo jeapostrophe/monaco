@@ -21,7 +21,7 @@
 (define (make-node who legal p ia st)
   (mcts-node p ia '() 0.0 0.0 (legal st) (who st)))
 
-(define (mcts-average-w mn)
+(define (mcts-node-w/v mn)
   (define-mcts mn)
   (if (zero? v) -inf.0 (/ w v)))
 (define (mcts-node-score mn)
@@ -29,20 +29,6 @@
   (+ (/ w v)
      ;; XXX No `c'
      (sqrt (* 2.0 (/ (log (mcts-node-v p)) v)))))
-
-(define (prob-ref l % get-num denom)
-  (when (empty? l)
-    (error 'prob-ref "Empty!"))
-  (eprintf "Selecting ~a from ~a\n"
-           % (map (λ (x) (exact->inexact (/ (get-num x) denom)))
-                  l))
-  (define top (car l))
-  (define top% (/ (get-num top) denom))
-  (cond [(<= % top%)
-         (eprintf "Chose ~a\n" top%)
-         top]
-        [else
-         (prob-ref (cdr l) (- % top%) get-num denom)]))
 
 (define (mcts-decide who terminal? score legal random-legal aeval
                      deadline mn st)
@@ -57,7 +43,7 @@
       (set! sti (aeval sti (mcts-node-ia mni))))
     ;; Expand
     (unless (null? (mcts-node-um mni))
-      ;; XXX Replace car/cdr with efficient random splice-out
+      ;; XXX Replace car/cdr with efficient random splice-out?
       (define m (car (mcts-node-um mni)))
       (set-mcts-node-um! mni (cdr (mcts-node-um mni)))
       (set! sti (aeval sti m))
@@ -66,6 +52,11 @@
       (set! mni new))
     ;; Default Policy
     (until (terminal? sti)
+      ;; XXX Represent actions as bytes and just make a `rejection
+      ;; sampling' predicate. Then I can just keep track of the last
+      ;; tried number in the node (instead of a pointer in the um
+      ;; field), but I'll have to have some terminal value like 0 or
+      ;; 255.
       (set! sti (aeval sti (random-legal sti))))
     (define fsc (score sti))
     ;; Backup
@@ -80,10 +71,9 @@
     (set! i (add1 i)))
   (eprintf "Took ~a steps\n" i)
   (mcts-node-ia
-   #;(prob-ref (mcts-node-cs mn) (random) mcts-node-v (mcts-node-v mn))
    (argmax #;mcts-node-w ;; Max Child
            #;mcts-node-v ;; Robust Child
-           mcts-average-w ;; Average reward
+           mcts-node-w/v ;; Average reward
            (mcts-node-cs mn))))
 
 (define (mcts-choose who legal p ia st)
@@ -114,6 +104,7 @@
            (define k->val
              (for/hasheq ([o (in-list opts)])
                (values (action-key (render-a o)) o)))
+           ;; XXX Add a ? command
            (define k
              (let read-loop ()
                (printf "> ") (flush-output)
