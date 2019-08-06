@@ -9,20 +9,18 @@
 
 (struct action (key desc val))
 
-(struct mcts-node (p ia cs w v um) #:mutable)
+(struct mcts-node (p ia cs w v um who) #:mutable)
 (define-struct-define define-mcts mcts-node)
-(define (make-node legal p ia st)
-  (mcts-node p ia '() 0.0 0.0 (legal st)))
+(define (make-node who legal p ia st)
+  (mcts-node p ia '() 0.0 0.0 (legal st) (who st)))
 
 (define (mcts-average-w mn)
   (define-mcts mn)
   (if (zero? v) -inf.0 (/ w v)))
 (define (mcts-node-score mn)
   (define-mcts mn)
-  (define pv (mcts-node-v p))
-  (cond
-    [(or (zero? pv) (zero? v)) +inf.0]
-    [else (+ (/ w v) (sqrt (* 2 (/ (log pv) (log v)))))]))
+  (+ (/ w v)
+     (sqrt (* 2.0 (/ (log (mcts-node-v p)) v)))))
 
 (define (prob-ref l % get-num denom)
   (when (empty? l)
@@ -38,34 +36,36 @@
         [else
          (prob-ref (cdr l) (- % top%) get-num denom)]))
 
-(define (mcts-decide terminal? score legal random-legal aeval
+(define (mcts-decide who terminal? score legal random-legal aeval
                      deadline mn st)
   (define i 0)
   (until (< deadline (current-inexact-milliseconds))
     (define sti st)
     (define mni mn)
-    ;; Selection
+    ;; Tree Policy
     (while (and (null? (mcts-node-um mni))
                 (cons? (mcts-node-cs mni)))
       (set! mni (argmax mcts-node-score (mcts-node-cs mni)))
       (set! sti (aeval sti (mcts-node-ia mni))))
-    ;; Expansion
+    ;; Expand
     (unless (null? (mcts-node-um mni))
       ;; XXX Replace car/cdr with efficient random splice-out
       (define m (car (mcts-node-um mni)))
       (set-mcts-node-um! mni (cdr (mcts-node-um mni)))
       (set! sti (aeval sti m))
-      (define new (make-node legal mni m sti))
+      (define new (make-node who legal mni m sti))
       (set-mcts-node-cs! mni (cons new (mcts-node-cs mni)))
       (set! mni new))
-    ;; Rollout
+    ;; Default Policy
     (until (terminal? sti)
       (set! sti (aeval sti (random-legal sti))))
-    ;; XXX hack on 1
-    (define r (vector-ref (score sti) 1))
-    ;; Backpropagate
+    (define fsc (score sti))
+    ;; Backup
     (while mni
-      (set-mcts-node-w! mni (+ r (mcts-node-w mni)))
+      (set-mcts-node-w!
+       mni
+       (+ (vector-ref fsc (mcts-node-who mni))
+          (mcts-node-w mni)))
       (set-mcts-node-v! mni (add1 (mcts-node-v mni)))
       (set! mni (mcts-node-p mni)))
     ;; Count
@@ -75,15 +75,16 @@
    #;(prob-ref (mcts-node-cs mn) (random) mcts-node-v (mcts-node-v mn))
    (argmax mcts-node-w ;; Max Child
            #;mcts-node-v ;; Robust Child
+           #;mcts-average-w ;; Average reward
            (mcts-node-cs mn))))
 
-(define (mcts-choose legal p ia st)
+(define (mcts-choose who legal p ia st)
   (or (and p
            (for/or ([c (in-list (mcts-node-cs p))])
              (and (equal? ia (mcts-node-ia c))
                   (set-mcts-node-p! c #f)
                   c)))
-      (make-node legal p ia st)))
+      (make-node who legal p ia st)))
 
 (define (real->decimal-string* r)
   (if (nan? r) "NAN" (real->decimal-string r)))
@@ -91,7 +92,7 @@
 (define (mcts-play! who terminal? score legal random-legal aeval render-st render-a
                     st0 human-id)
   (let/ec esc
-    (let loop ([st st0] [gt (mcts-choose legal #f #f st0)])
+    (let loop ([st st0] [gt (mcts-choose who legal #f #f st0)])
       (printf "Expected computer value: ~a\n"
               (real->decimal-string*
                (/ (mcts-node-w gt) (mcts-node-v gt))))
@@ -114,12 +115,13 @@
                    (read-loop))))
            (hash-ref k->val k)]
           [else
-           (mcts-decide terminal? score legal random-legal aeval
-                        ;; XXX Base on opponent's time
-                        (+ (current-inexact-milliseconds) 100)
-                        gt st)]))
+           (mcts-decide
+            who terminal? score legal random-legal aeval
+            ;; XXX Base on opponent's time
+            (+ (current-inexact-milliseconds) 100)
+            gt st)]))
       (define stp (aeval st a))
-      (loop stp (mcts-choose legal gt a stp)))))
+      (loop stp (mcts-choose who legal gt a stp)))))
 
 ;; XXX Use adqc to write the functions?
 
