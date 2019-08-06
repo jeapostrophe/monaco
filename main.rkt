@@ -73,26 +73,25 @@
   (eprintf "Took ~a steps\n" i)
   (mcts-node-ia
    #;(prob-ref (mcts-node-cs mn) (random) mcts-node-v (mcts-node-v mn))
-   (argmax mcts-node-w ;; Max Child
+   (argmax #;mcts-node-w ;; Max Child
            #;mcts-node-v ;; Robust Child
-           #;mcts-average-w ;; Average reward
+           mcts-average-w ;; Average reward
            (mcts-node-cs mn))))
 
 (define (mcts-choose who legal p ia st)
-  (or (and p
-           (for/or ([c (in-list (mcts-node-cs p))])
-             (and (equal? ia (mcts-node-ia c))
-                  (set-mcts-node-p! c #f)
-                  c)))
-      (make-node who legal p ia st)))
+  (and p
+       (for/or ([c (in-list (mcts-node-cs p))])
+         (and (equal? ia (mcts-node-ia c))
+              (set-mcts-node-p! c #f)
+              c))))
 
 (define (real->decimal-string* r)
   (if (nan? r) "NAN" (real->decimal-string r)))
 
-(define (mcts-play! who terminal? score legal random-legal aeval render-st render-a
-                    st0 human-id)
+(define (mcts-play! who terminal? score legal random-legal aeval render-st render-a st0 human-id)
   (let/ec esc
-    (let loop ([st st0] [gt (mcts-choose who legal #f #f st0)])
+    (let loop ([st st0] [mgt #f])
+      (define gt (or mgt (make-node who legal #f #f st)))
       (printf "Expected computer value: ~a\n"
               (real->decimal-string*
                (/ (mcts-node-w gt) (mcts-node-v gt))))
