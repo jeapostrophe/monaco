@@ -18,27 +18,58 @@
 (define iso-init
   (iso 0 'move (vector (cons 2 0) (cons 3 (sub1 cols))) 0))
 
-(define (iso-terminal? st)
-  (and (eq? 'move (iso-phase st))
-       (empty? (iso-legal st))))
-
 (define (iso-score st)
   (if (zero? (iso-who st))
     (vector  0.0 +1.0)
     (vector +1.0  0.0)))
 
-(struct a:move (dr dc) #:prefab)
-(struct a:select-row (r) #:prefab)
-(struct a:select-col (c) #:prefab)
-(define deltas '(-1 0 +1))
-(define moves
-  (for*/list ([dr (in-list deltas)]
-              [dc (in-list deltas)]
-              #:unless (= dr dc 0))
-    (a:move dr dc)))
-(define (iso-aeval st a)
-  (match a    
-    [(a:move dr dc)
+(define-functor (open-iso st)
+  (define B
+    (for/fold ([B (iso-board st)]) ([p (in-vector (iso-ps st))])
+      (match-define (cons r c) p)
+      (bitwise-bit-set B (cell-idx r c))))
+  (define pp (vector-ref (iso-ps st) (iso-who st)))
+  (define pr (car pp))
+  (define pc (cdr pp)))
+
+(define dirs 9)
+(define iso-actions
+  (max dirs rows cols))
+(define (decode-move i)
+  (define-values (q r) (quotient/remainder i 3))
+  (values (sub1 q) (sub1 r)))
+
+(define (iso-terminal? st)
+  (open-iso st)
+  (and (eq? 'move (iso-phase st))
+       (not
+        (for/or ([i (in-range dirs)])
+          (iso-legal-move? B pr pc i)))))
+(define (iso-legal-move? B pr pc i)
+  (define-values (dr dc) (decode-move i))
+  (define rp (+ dr pr))
+  (define cp (+ dc pc))
+  (and (<= 0 rp) (<= 0 cp)
+       (< rp rows) (< cp cols)
+       (not (bitwise-bit-set? B (cell-idx rp cp)))))
+(define (iso-legal? st i)
+  (open-iso st)
+  (match (iso-phase st)
+    ['move
+     (and (between 0 i dirs)
+          (iso-legal-move? B pr pc i))]
+    ['select-row
+     (and (between 0 i rows)
+          (for/or ([c (in-range cols)])
+            (not (bitwise-bit-set? B (cell-idx i c)))))]
+    [(cons 'select-col r)
+     (and (between 0 i cols)
+          (not (bitwise-bit-set? B (cell-idx r i))))]))
+
+(define (iso-aeval st i)
+  (match (iso-phase st)
+    ['move
+     (define-values (dr dc) (decode-move i))
      (define ps (iso-ps st))
      (define who (iso-who st))
      (match-define (cons r c) (vector-ref ps who))
@@ -47,44 +78,14 @@
      (struct-copy iso st
                   [phase 'select-row]
                   [ps nps])]
-    [(a:select-row r)
+    ['select-row
      (struct-copy iso st
-                  [phase (cons 'select-col r)])]
-    [(a:select-col c)
-     (match-define (cons 'select-col r) (iso-phase st))
+                  [phase (cons 'select-col i)])]
+    [(cons 'select-col r)
      (struct-copy iso st
                   [who (modulo (add1 (iso-who st)) 2)]
                   [phase 'move]
-                  [board (bitwise-bit-set (iso-board st) (cell-idx r c))])]))
-
-(define-functor (open-iso st)
-  (define B
-    (for/fold ([B (iso-board st)]) ([p (in-vector (iso-ps st))])
-      (match-define (cons r c) p)
-      (bitwise-bit-set B (cell-idx r c)))))
-(define (iso-legal st)
-  (open-iso st)
-  (match (iso-phase st)
-    ['move
-     (match-define (cons r c) (vector-ref (iso-ps st) (iso-who st)))
-     (filter
-      (match-lambda
-        [(a:move dr dc)
-         (define rp (+ dr r))
-         (define cp (+ dc c))
-         (and (<= 0 rp) (<= 0 cp)
-              (< rp rows) (< cp cols)
-              (not (bitwise-bit-set? B (cell-idx rp cp))))])
-      moves)]
-    ['select-row
-     (for/list ([r (in-range rows)]
-                #:when (for/or ([c (in-range cols)])
-                         (not (bitwise-bit-set? B (cell-idx r c)))))
-       (a:select-row r))]
-    [(cons 'select-col r)
-     (for/list ([c (in-range cols)]
-                #:unless (bitwise-bit-set? B (cell-idx r c)))
-       (a:select-col c))]))
+                  [board (bitwise-bit-set (iso-board st) (cell-idx r i))])]))
 
 (define row-keys "qwerty")
 (define col-keys "asdfghjk")
@@ -115,16 +116,16 @@
                            [else (text " ")]))))))
    (text (format "~a's turn: ~a" (iso-who st) (iso-phase st)))))
 
-(define (iso-render-a a)
+(define (iso-render-a st i)
   (action
-   (match a
-     [(a:move dr dc) (string-ref "qweasdzxc" (+ (add1 dc) (* (add1 dr) 3)))]
-     [(a:select-row r) (string-ref row-keys r)]
-     [(a:select-col c) (string-ref col-keys c)])
-   #f a))
+   (match (iso-phase st)
+     ['move (string-ref "qweasdzxc" i)]
+     ['select-row (string-ref row-keys i)]
+     [(cons 'select-col _) (string-ref col-keys i)])
+   #f))
 
 (module+ main
-  (mcts-play! iso-who iso-terminal? iso-score
-              iso-legal iso-aeval
+  (mcts-play! iso-actions iso-who iso-terminal? iso-score
+              iso-legal? iso-aeval
               iso-render-st iso-render-a
               iso-init 0))

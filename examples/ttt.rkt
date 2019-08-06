@@ -83,34 +83,21 @@
     [(winning? Os) (vector  1.0  0.0)]
     [else          (vector  0.5  0.5)]))
 
-(define all-actions
-  (for*/list ([r (in-range rows)]
-              [c (in-range cols)])
-    (cons r c)))
-
-(define (ttt-render-a a)
-  (match-define (cons r c) a)
-  (action (string-ref "qweasdzxc" (cell-idx r c))
-          (format "Select ~a,~a" (add1 r) (add1 c))
-          a))
-
-(define (ttt-legal st)
+(define ttt-actions slots)
+(define (ttt-render-a st a)
+  (action (string-ref "qweasdzxc" a) #f))
+(define (ttt-legal? st a)
   (open-ttt st)
-  (filter
-   (match-lambda
-     [(cons r c)
-      (not (bitwise-bit-set? B (cell-idx r c)))])
-   all-actions))
+  (not (bitwise-bit-set? B a)))
 
 (define (ttt-aeval st a)
   (open-ttt st)
   (define st-other (bitwise-bit-flip st player-idx))
   (define me-start (if x? X-start O-start))
-  (match-define (cons r c) a)
-  (bitwise-bit-set st-other (+ (cell-idx r c) me-start)))
+  (bitwise-bit-set st-other (+ a me-start)))
 
 (module+ main
-  (mcts-play! ttt-who ttt-terminal? ttt-score
-              ttt-legal ttt-aeval
+  (mcts-play! ttt-actions ttt-who ttt-terminal? ttt-score
+              ttt-legal? ttt-aeval
               ttt-render-st ttt-render-a
               ttt-init 0))

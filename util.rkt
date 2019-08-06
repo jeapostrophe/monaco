@@ -11,12 +11,17 @@
 (define (~b x w)
   (~r x #:min-width w #:pad-string "0" #:base 2))
 
+(define (between lo x hi)
+  (and (<= lo x) (< x hi)))
+
 (define (random-list-ref l)
   (list-ref l (random (length l))))
 (define-syntax-rule (while c e ...)
   (let loop () (when c e ... (loop))))
 (define-syntax-rule (until c e ...)
   (while (not c) e ...))
+(define-syntax-rule (do-until e c)
+  (begin e (until c e)))
 
 (define-syntax (condlet stx)
   (syntax-parse stx
