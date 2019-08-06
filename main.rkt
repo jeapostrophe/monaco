@@ -9,6 +9,13 @@
 
 (struct action (key desc val))
 
+;;   p = parent (could be stored in continuation)
+;;  ia = initiating action
+;;  cs = children
+;;   w = reward
+;;   v = visits
+;;  um = un-explored actions
+;; who = player who makes decision / player who's reward counts
 (struct mcts-node (p ia cs w v um who) #:mutable)
 (define-struct-define define-mcts mcts-node)
 (define (make-node who legal p ia st)
@@ -20,6 +27,7 @@
 (define (mcts-node-score mn)
   (define-mcts mn)
   (+ (/ w v)
+     ;; XXX No `c'
      (sqrt (* 2.0 (/ (log (mcts-node-v p)) v)))))
 
 (define (prob-ref l % get-num denom)
