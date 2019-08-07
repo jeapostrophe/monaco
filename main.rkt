@@ -80,7 +80,7 @@
              #;mcts-node-v ;; Robust Child
              mcts-node-w/v ;; Average reward
              (mcts-node-cs mn))))
-  (define (mcts-choose p ia st)
+  (define (mcts-choose p ia)
     (and p
          (for/or ([c (in-list (mcts-node-cs p))])
            (and (equal? ia (mcts-node-ia c))
@@ -120,4 +120,4 @@
             (+ (current-inexact-milliseconds) 100)
             gt st)]))
       (define stp (aeval st a))
-      (loop stp (mcts-choose gt a stp)))))
+      (loop stp (mcts-choose gt a)))))
