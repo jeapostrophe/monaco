@@ -1,3 +1,4 @@
+action max_action;
 bool terminal_p( state st );
 actor winner( state st ); // 0 is draw
 void render_st( state st );
@@ -26,6 +27,17 @@ typedef struct {
 node POOL[POOL_SIZE] = {{0}};
 node_ptr free_ptr = 0;
 
+action decide( node_ptr gt, state st ) {
+  action a;
+  do {
+    a = rand() % max_action; }
+  while ( ! legal_p( st, a ) );
+  return a; }
+
+node_ptr choose( node_ptr gt, action a ) {
+  // XXX
+  return NULL_NODE; }
+
 void play() {
   state st = st0;
   node_ptr gt = NULL_NODE;
@@ -36,18 +48,27 @@ void play() {
       break; }
     
     action a;
-    char c;
-    do {
-      printf("> ");
-      scanf("%c", &c);;
-    } while ( ! (decode_action(st, c, &a) && legal_p(st, a)) );
+    if ( who(st) == 1 ) {
+      char c;
+      do {
+        printf("> ");
+        scanf("%c", &c);;
+      } while ( ! (decode_action(st, c, &a) && legal_p(st, a)) ); }
+    else {
+      a = decide(gt, st); }
+    
+    st = eval(st, a);
+    gt = choose(gt, a); }
 
-    st = eval(st, a); }
-  
-  printf("Winner is %d\n", winner(st));
+  actor w = winner(st);
+  if ( w == 0 ) {
+    printf("Draw\n"); }
+  else {
+    printf("Winner is %s\n", w == 1 ? "Player" : "Computer"); }
   return; }
 
 int main() {
+  srand(time(NULL));
   printf("%f\n", (((float)sizeof(POOL))/1024.0/1024.0));
   play();
   return 0; }

@@ -7,6 +7,8 @@ typedef uint16_t board;
 #define COLS 3
 #define SLOTS (ROWS*COLS)
 
+action max_action = SLOTS;
+
 #define PLAYER_IDX 0
 #define O_START (PLAYER_IDX+1)
 #define O_STOP (O_START+SLOTS)
