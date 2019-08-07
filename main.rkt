@@ -31,14 +31,14 @@
 (define (real->decimal-string* r)
   (if (nan? r) "NAN" (real->decimal-string r)))
 
-(define (mcts-play! how-many-actions curr-p last-p terminal? score legal? aeval render-st render-a
+(define (mcts-play! how-many-actions who terminal? score legal? aeval render-st render-a
                     st0 human-id)
   (define (find-next-legal-action st prev)
     (do-until (set! prev (sub1 prev))
               (or (= -1 prev) (legal? st prev)))
     prev)
-  (define (make-node p ia st)
-    (mcts-node p ia '() 0.0 0.0 (add1 (find-next-legal-action st how-many-actions)) (last-p st)))
+  (define (make-node p last-p ia st)
+    (mcts-node p ia '() 0.0 0.0 (add1 (find-next-legal-action st how-many-actions)) last-p))
   (define (mcts-decide deadline mn st)
     (define i 0)
     (until (< deadline (current-inexact-milliseconds))
@@ -53,8 +53,9 @@
       (unless (zero? (mcts-node-ta mni))
         (define m (sub1 (mcts-node-ta mni)))
         (set-mcts-node-ta! mni (add1 (find-next-legal-action sti m)))
+        (define last-p (who sti))
         (set! sti (aeval sti m))
-        (define new (make-node mni m sti))
+        (define new (make-node mni last-p m sti))
         (set-mcts-node-cs! mni (cons new (mcts-node-cs mni)))
         (set! mni new))
       ;; Default Policy
@@ -88,18 +89,19 @@
                 c))))
 
   (let/ec esc
-    (let loop ([st st0] [mgt #f])
-      (define gt (or mgt (make-node #f #f st)))
+    (let loop ([st st0] [last-p #f] [mgt #f])
+      (define gt (or mgt (make-node #f last-p #f st)))
       (printf "Expected computer value: ~a\n"
               (real->decimal-string*
                (/ (mcts-node-w gt) (mcts-node-v gt))))
       (draw-here (render-st st))
+      (define this-p (who st))
       (define a
         (cond
           [(terminal? st)
            (printf "Score is ~a\n" (score st))
            (esc)]
-          [(= human-id (curr-p st))
+          [(= human-id this-p)
            (define k->val
              (for/hasheq ([o (in-range how-many-actions)]
                           #:when (legal? st o))
@@ -120,4 +122,4 @@
             (+ (current-inexact-milliseconds) 100)
             gt st)]))
       (define stp (aeval st a))
-      (loop stp (mcts-choose gt a)))))
+      (loop stp this-p (mcts-choose gt a)))))

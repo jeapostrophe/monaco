@@ -4,8 +4,7 @@ actor winner( state st ); // 0 is draw
 void render_st( state st );
 bool decode_action( state st, char c, action *a );
 bool legal_p( state st, action a );
-actor curr_actor( state st );
-actor last_actor( state st );
+actor who( state st );
 state eval( state st, action a );
 
 #define POOL_SIZE UINT16_MAX
@@ -51,7 +50,7 @@ action next_legal( state st, action prev ) {
       if ( legal_p(st, prev) ) {
         return prev + 1; } } } }
 
-node_ptr alloc_node( node_ptr parent, action ia, state st ) {
+node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
   node_count++;
   node_ptr new = free_ptr;
   if ( new == NULL_NODE ) {
@@ -75,7 +74,7 @@ node_ptr alloc_node( node_ptr parent, action ia, state st ) {
   } else {
     action a = next_legal( st, how_many_actions );
     NODE[new].na = a; }
-  NODE[new].wh = last_actor( st );
+  NODE[new].wh = lastp;
 
   if ( parent != NULL_NODE ) {
     NODE[new].rs = NODE[parent].lc;
@@ -163,8 +162,9 @@ action decide( node_ptr gt, state st ) {
     if ( ! (NODE[gti].na == 0) ) {
       action m = NODE[gti].na - 1;
       NODE[gti].na = next_legal( sti, m );
+      actor lastp = who(sti);
       sti = eval(sti, m);
-      gti = alloc_node( gti, m, sti ); }
+      gti = alloc_node( gti, lastp, m, sti ); }
 
     // Default Policy
     while ( ! terminal_p(sti) ) {
@@ -212,19 +212,21 @@ node_ptr choose( node_ptr gt, action a ) {
 void play() {
   state st = st0;
   node_ptr gt = NULL_NODE;
+  actor lastp = 0;
 
   while (1) {
     if ( gt == NULL_NODE ) {
-      gt = alloc_node( NULL_NODE, 0, st ); }
+      gt = alloc_node( NULL_NODE, lastp, 0, st ); }
     printf("Expected value is %f\n",
            (NODE[gt].w / ((double)NODE[gt].v)));
-    
+
     render_st(st);
     if ( terminal_p(st) ) {
       break; }
     
+    actor thisp = who(st);
     action a;
-    if ( curr_actor(st) == 1 ) {
+    if ( thisp == 1 ) {
       char c;
       do {
         printf("> ");
@@ -234,7 +236,8 @@ void play() {
       a = decide(gt, st); }
     
     st = eval(st, a);
-    gt = choose(gt, a); }
+    gt = choose(gt, a);
+    lastp = thisp; }
 
   actor w = winner(st);
   if ( w == 0 ) {

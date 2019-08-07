@@ -65,10 +65,8 @@ actor winner( state st ) {
   analyze( st, &t, &w );
   return w; }
 
-actor curr_actor( state st ) {
+actor who( state st ) {
   return 1 + BIT(st, PLAYER_IDX); }
-actor last_actor( state st ) {
-  return curr_actor(st) == 1 ? 2 : 1; }
 
 bool legal_p( state st, action a ) {
   return (BIT(marks_all(st), a) == 0); }
@@ -82,7 +80,7 @@ bool decode_action( state st, char c, action *a ) {
   return false; }
 
 state eval( state st, action a ) {
-  uint8_t me = curr_actor(st) == 1 ? O_START : X_START;
+  uint8_t me = who(st) == 1 ? O_START : X_START;
   st = FLIP(st, PLAYER_IDX);
   st = SET(st, a + me);
   return st; }
@@ -99,6 +97,6 @@ void render_st( state st ) {
     printf("\n");
     if ( r != ROWS-1 ) {
       printf ("─┼─┼─\n"); } }
-  printf("%c's turn\n", (curr_actor(st) == 1 ? 'O' : 'X') ); }
+  printf("%c's turn\n", (who(st) == 1 ? 'O' : 'X') ); }
 
 #include "monaco.c"
