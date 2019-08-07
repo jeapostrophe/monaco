@@ -7,6 +7,15 @@ bool legal_p( state st, action a );
 actor who( state st );
 state eval( state st, action a );
 
+bool debug_p = false;
+
+bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
+  for ( action i = 0; i < max_key; i++ ) {
+    if ( keys[i] == c ) {
+      *a = i;
+      return true; } }
+  return false; }
+  
 #define POOL_SIZE UINT16_MAX
 typedef uint16_t node_ptr;
 #define NULL_NODE ((node_ptr)0)
@@ -128,7 +137,7 @@ node_ptr select( node_ptr parent, float explore_factor ) {
     double w = NODE[c].w;
     double explore_score = (sqrt(tlpv / vd));
     double score = (w / vd) + explore_factor * explore_score;
-    if ( false && explore_factor == 0.0 ) {
+    if ( debug_p && explore_factor == 0.0 ) {
       printf("  ia(%d) w(%f) vd(%f) es(%f) sc(%f)\n",
              NODE[c].ia, w, vd, explore_score, score); }
     // XXX Update position in queue
@@ -136,7 +145,7 @@ node_ptr select( node_ptr parent, float explore_factor ) {
       best_score = score;
       best_child = c; } }
 
-  if ( false && explore_factor == 0.0 ) {
+  if ( debug_p && explore_factor == 0.0 ) {
     printf("Choosing %d\n", NODE[best_child].ia); }
   if ( best_child == NULL_NODE ) {
     fprintf(stderr, "No child!\n");
@@ -153,13 +162,20 @@ action decide( node_ptr gt, state st ) {
     state sti = st;
     node_ptr gti = gt;
 
+    if ( debug_p ) {
+      printf("starting iteration %d\n", iters); }
+    
     // Tree Policy
     while ( NODE[gti].na == 0 && NODE[gti].lc != NULL_NODE ) {
+      if ( debug_p ) {
+        printf("tree_policy %d\n", gti); }
       gti = select(gti, 1.0);
       sti = eval(sti, NODE[gti].ia); }
 
     // Expand
     if ( ! (NODE[gti].na == 0) ) {
+      if ( debug_p ) {
+        printf("expand %d\n", gti); }
       action m = NODE[gti].na - 1;
       NODE[gti].na = next_legal( sti, m );
       actor lastp = who(sti);
@@ -171,6 +187,8 @@ action decide( node_ptr gt, state st ) {
       action a;
       do { a = rand() % how_many_actions; }
       while ( ! legal_p( sti, a ) );
+      if ( debug_p ) {
+        render_st(sti); }
       sti = eval(sti, a); }
     
     // Back propagate
@@ -248,8 +266,9 @@ void play() {
 
 int main() {
   srand(time(NULL));
-  printf("Node is %4lu  B\n", sizeof(node));
-  printf("Pool is %4lu KB\n", ((sizeof(NODE))/1024));
+  printf("State is %4lu  B\n", sizeof(state));
+  printf("Node  is %4lu  B\n", sizeof(node));
+  printf("Pool  is %4lu KB\n", ((sizeof(NODE))/1024));
   initialize_pool();
   play();
   return 0; }

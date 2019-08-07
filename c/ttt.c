@@ -71,13 +71,9 @@ actor who( state st ) {
 bool legal_p( state st, action a ) {
   return (BIT(marks_all(st), a) == 0); }
 
-char keys[SLOTS] = "qweasdzxc";
+const char keys[] = "qweasdzxc";
 bool decode_action( state st, char c, action *a ) {
-  for ( action i = 0; i < SLOTS; i++ ) {
-    if ( keys[i] == c ) {
-      *a = i;
-      return true; } }
-  return false; }
+  return decode_action_keys( keys, SLOTS, c, a ); }
 
 state eval( state st, action a ) {
   uint8_t me = who(st) == 1 ? O_START : X_START;
