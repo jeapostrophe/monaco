@@ -4,7 +4,8 @@ actor winner( state st ); // 0 is draw
 void render_st( state st );
 bool decode_action( state st, char c, action *a );
 bool legal_p( state st, action a );
-actor who( state st );
+actor curr_actor( state st );
+actor last_actor( state st );
 state eval( state st, action a );
 
 #define POOL_SIZE UINT16_MAX
@@ -74,7 +75,7 @@ node_ptr alloc_node( node_ptr parent, action ia, state st ) {
   } else {
     action a = next_legal( st, how_many_actions );
     NODE[new].na = a; }
-  NODE[new].wh = who( st );
+  NODE[new].wh = last_actor( st );
 
   if ( parent != NULL_NODE ) {
     NODE[new].rs = NODE[parent].lc;
@@ -91,14 +92,32 @@ void free_node( node_ptr n ) {
   if ( pq != NULL_NODE ) {
     NODE[pq].nq = nq; }
 
+  if ( NODE[n].pr != NULL_NODE ) {
+    fprintf(stderr, "free_node: disconnect parent first\n");
+    exit(1); }
+  if ( NODE[n].lc != NULL_NODE ) {
+    fprintf(stderr, "Free children (or disconnect) first\n");
+    exit(1); }
+  if ( NODE[n].rs != NULL_NODE ) {
+    fprintf(stderr, "Free siblings (or disconnect) first\n");
+    exit(1); }
+
   if ( free_ptr != NULL_NODE ) {
     NODE[free_ptr].pq = n; }
   NODE[n].nq = free_ptr;
   NODE[n].pq = NULL_NODE;
+  free_ptr = n;
 
   return; }
 
-node_ptr select( node_ptr parent, float explore ) {
+void free_node_rec( node_ptr n ) {
+  if ( n == NULL_NODE ) { return; }
+  free_node_rec(NODE[n].lc); NODE[n].lc = NULL_NODE;
+  free_node_rec(NODE[n].rs); NODE[n].rs = NULL_NODE;
+  NODE[n].pr = NULL_NODE;
+  free_node(n); }
+
+node_ptr select( node_ptr parent, float explore_factor ) {
   double best_score = (-1.0/0.0);
   node_ptr best_child = NULL_NODE;
 
@@ -107,20 +126,26 @@ node_ptr select( node_ptr parent, float explore ) {
         c != NULL_NODE;
         c = NODE[c].rs ) {
     double vd = ((double)NODE[c].v);
-    double score =
-      (NODE[c].w / vd)
-      + explore * (sqrt(tlpv / vd));
+    double w = NODE[c].w;
+    double explore_score = (sqrt(tlpv / vd));
+    double score = (w / vd) + explore_factor * explore_score;
+    if ( false && explore_factor == 0.0 ) {
+      printf("  ia(%d) w(%f) vd(%f) es(%f) sc(%f)\n",
+             NODE[c].ia, w, vd, explore_score, score); }
     // XXX Update position in queue
     if ( score > best_score ) {
       best_score = score;
       best_child = c; } }
 
+  if ( false && explore_factor == 0.0 ) {
+    printf("Choosing %d\n", NODE[best_child].ia); }
   if ( best_child == NULL_NODE ) {
     fprintf(stderr, "No child!\n");
     exit(1); }
 
   return best_child; }
 
+// XXX Incorporate "node complete beneath this point"
 action decide( node_ptr gt, state st ) {
   uint32_t iters = 0;
   double deadline = current_ms() + 100;
@@ -168,15 +193,19 @@ node_ptr choose( node_ptr gt, action a ) {
 
   node_ptr r = NULL_NODE;
   node_ptr c = NODE[gt].lc;
+  NODE[gt].lc = NULL_NODE;
   free_node(gt);
   while ( c != NULL_NODE ) {
     node_ptr t = c;
     c = NODE[t].rs;
+    NODE[t].rs = NULL_NODE;
     NODE[t].pr = NULL_NODE;
     if ( NODE[t].ia == a ) {
       r = t; }
     else {
-      free_node(t); } }
+      free_node_rec(t); } }
+
+  printf("Now %d nodes total\n", node_count);
 
   return r; }
 
@@ -195,7 +224,7 @@ void play() {
       break; }
     
     action a;
-    if ( who(st) == 1 ) {
+    if ( curr_actor(st) == 1 ) {
       char c;
       do {
         printf("> ");
