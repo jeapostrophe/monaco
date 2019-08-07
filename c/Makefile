@@ -1,6 +1,6 @@
 all: ttt.test
 
-CFLAGS := -Wall -Werror -Wpedantic -O0 -march=native -Wno-unused-variable -Wno-unused-function --std=c17 
+CFLAGS := -Wall -Werror -Wpedantic -O3 -march=native -Wno-unused-variable -Wno-unused-function --std=c17 
 
 %.test: %.bin
 	./$<

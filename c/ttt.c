@@ -11,25 +11,25 @@ action how_many_actions = SLOTS;
 
 #define PLAYER_IDX 0
 #define O_START (PLAYER_IDX+1)
-#define O_STOP (O_START+SLOTS)
-#define X_START (O_STOP+1)
-#define X_STOP (X_START+SLOTS)
+#define O_LEN SLOTS
+#define X_START (O_START+O_LEN+1)
+#define X_LEN SLOTS
 
 state st0 = 0;
 
 board marks_x( state st ) {
-  return FIELD(st, X_START, X_STOP); }
+  return BF_GET(st, X_START, X_LEN); }
 board marks_o( state st ) {
-  return FIELD(st, O_START, O_STOP); }
+  return BF_GET(st, O_START, O_LEN); }
 board marks_all( state st ) {
   return marks_x(st) | marks_o(st); }
 
 uint8_t cell( uint8_t r, uint8_t c ) {
   return c + r * COLS; }
 bool seq( board b, uint8_t r, uint8_t c, uint8_t dr, uint8_t dc ) {
-  return BIT(b, cell(r,c))
-    && BIT(b, cell(r+dr,c+dc))
-    && BIT(b, cell(r+dr+dr,c+dc+dc)); }
+  return BIT_TESTi(b, cell(r,c))
+    && BIT_TESTi(b, cell(r+dr,c+dc))
+    && BIT_TESTi(b, cell(r+dr+dr,c+dc+dc)); }
 bool col( board b, uint8_t r ) {
   return seq(b, r, 0, 0, +1); }
 bool row( board b, uint8_t c ) {
@@ -66,10 +66,10 @@ actor winner( state st ) {
   return w; }
 
 actor who( state st ) {
-  return 1 + BIT(st, PLAYER_IDX); }
+  return 1 + BIT_TESTi(st, PLAYER_IDX); }
 
 bool legal_p( state st, action a ) {
-  return (BIT(marks_all(st), a) == 0); }
+  return (BIT_TESTi(marks_all(st), a) == 0); }
 
 const char keys[] = "qweasdzxc";
 bool decode_action( state st, char c, action *a ) {
@@ -77,8 +77,8 @@ bool decode_action( state st, char c, action *a ) {
 
 state eval( state st, action a ) {
   uint8_t me = who(st) == 1 ? O_START : X_START;
-  st = FLIP(st, PLAYER_IDX);
-  st = SET(st, a + me);
+  st = BIT_FLIPi(st, PLAYER_IDX);
+  st = BIT_SETi(st, a + me);
   return st; }
 
 void render_st( state st ) {
@@ -88,7 +88,7 @@ void render_st( state st ) {
   for ( uint8_t r = 0; r < ROWS; r++ ) {
     for ( uint8_t c = 0; c < COLS; c++ ) {
       uint8_t i = cell(r, c);
-      printf("%c", (BIT(xm, i) ? 'X' : (BIT(om, i) ? 'O' : ' ')) );
+      printf("%c", (BIT_TESTi(xm, i) ? 'X' : (BIT_TESTi(om, i) ? 'O' : ' ')) );
       if ( c != COLS-1 ) { printf("│"); } }
     printf("\n");
     if ( r != ROWS-1 ) {
