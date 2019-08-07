@@ -31,14 +31,14 @@
 (define (real->decimal-string* r)
   (if (nan? r) "NAN" (real->decimal-string r)))
 
-(define (mcts-play! how-many-actions who terminal? score legal? aeval render-st render-a
+(define (mcts-play! how-many-actions curr-p last-p terminal? score legal? aeval render-st render-a
                     st0 human-id)
   (define (find-next-legal-action st prev)
     (do-until (set! prev (sub1 prev))
               (or (= -1 prev) (legal? st prev)))
     prev)
   (define (make-node p ia st)
-    (mcts-node p ia '() 0.0 0.0 (add1 (find-next-legal-action st how-many-actions)) (who st)))
+    (mcts-node p ia '() 0.0 0.0 (add1 (find-next-legal-action st how-many-actions)) (last-p st)))
   (define (mcts-decide deadline mn st)
     (define i 0)
     (until (< deadline (current-inexact-milliseconds))
@@ -99,7 +99,7 @@
           [(terminal? st)
            (printf "Score is ~a\n" (score st))
            (esc)]
-          [(= human-id (who st))
+          [(= human-id (curr-p st))
            (define k->val
              (for/hasheq ([o (in-range how-many-actions)]
                           #:when (legal? st o))

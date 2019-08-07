@@ -50,9 +50,12 @@
   (define B (bitwise-ior Xs Os))
   (define x? (bitwise-bit-set? st player-idx)))
 
-(define (ttt-who st)
+(define (ttt-curr st)
   (open-ttt st)
   (if x? 1 0))
+(define (ttt-last st)
+  (open-ttt st)
+  (if x? 0 1))
 
 (define text:X (text "X"))
 (define text:O (text "O"))
@@ -97,7 +100,7 @@
   (bitwise-bit-set st-other (+ a me-start)))
 
 (module+ main
-  (mcts-play! ttt-actions ttt-who ttt-terminal? ttt-score
+  (mcts-play! ttt-actions ttt-curr ttt-last ttt-terminal? ttt-score
               ttt-legal? ttt-aeval
               ttt-render-st ttt-render-a
               ttt-init 0))

@@ -18,6 +18,12 @@
 (define iso-init
   (iso 0 'move (vector (cons 2 0) (cons 3 (sub1 cols))) 0))
 
+(define iso-curr iso-who)
+(define (iso-last st)
+  (match (iso-phase st)
+    ['move (if (zero? (iso-who st)) 1 0)]
+    [_ (iso-who st)]))
+
 (define (iso-score st)
   (if (zero? (iso-who st))
     (vector  0.0 +1.0)
@@ -125,7 +131,7 @@
    #f))
 
 (module+ main
-  (mcts-play! iso-actions iso-who iso-terminal? iso-score
+  (mcts-play! iso-actions iso-curr iso-last iso-terminal? iso-score
               iso-legal? iso-aeval
               iso-render-st iso-render-a
               iso-init 0))
