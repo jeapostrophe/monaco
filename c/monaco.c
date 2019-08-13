@@ -7,7 +7,8 @@ bool legal_p( state st, action a );
 actor who( state st );
 state eval( state st, action a );
 
-bool debug_p = false;
+const bool STUNTING = true;
+const bool debug_p = false;
 
 bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
   for ( action i = 0; i < max_key; i++ ) {
@@ -15,9 +16,11 @@ bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
       *a = i;
       return true; } }
   return false; }
-  
-#define POOL_SIZE (3*UINT16_MAX)
-typedef uint32_t node_ptr;
+
+// XXX It would be nice to be able to easily have N-bit numbers so I
+// could have a 24-bit pointer. (Really I want a 20-bit pointer.)
+#define POOL_SIZE (1*UINT16_MAX)
+typedef uint16_t node_ptr;
 #define NULL_NODE ((node_ptr)0)
 
 typedef struct {
@@ -173,7 +176,7 @@ action decide( node_ptr gt, state st ) {
     // Expand
     if ( ! (NODE[gti].na == 0) &&
          // Stunting: Don't expand when no free space
-         ! (free_ptr == NULL_NODE) ) {
+         ( ! STUNTING || ! (free_ptr == NULL_NODE)) ) {
       if ( debug_p ) {
         printf("expand %d\n", gti); }
       action m = NODE[gti].na - 1;
