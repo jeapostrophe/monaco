@@ -16,8 +16,8 @@ bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
       return true; } }
   return false; }
   
-#define POOL_SIZE (1*UINT16_MAX)
-typedef uint16_t node_ptr;
+#define POOL_SIZE (3*UINT16_MAX)
+typedef uint32_t node_ptr;
 #define NULL_NODE ((node_ptr)0)
 
 typedef struct {
@@ -26,8 +26,10 @@ typedef struct {
   node_ptr pr; // parent
   node_ptr lc; // left-child
   node_ptr rs; // right-sibling
+  /*
   node_ptr pq; // prev in queue
   node_ptr nq; // next in queue
+  */
   action   ia; // initiating action
   action   na; // next action to expand
   actor    wh; // who is acting
@@ -73,8 +75,8 @@ node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
   NODE[new].pr = parent;
   NODE[new].lc = NULL_NODE;
   NODE[new].rs = NULL_NODE;
-  NODE[new].pq = NULL_NODE;
-  NODE[new].nq = NULL_NODE;
+  // NODE[new].pq = NULL_NODE;
+  // NODE[new].nq = NULL_NODE;
   NODE[new].ia = ia;
   if ( terminal_p(st) ) {
     NODE[new].na = 0;
@@ -91,12 +93,14 @@ node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
 
 void free_node( node_ptr n ) {
   node_count--;
+  /*
   node_ptr nq = NODE[n].nq;
   if ( nq != NULL_NODE ) {
     NODE[nq].pq = NODE[n].pq; }
   node_ptr pq = NODE[n].pq;
   if ( pq != NULL_NODE ) {
     NODE[pq].nq = nq; }
+  */
 
   if ( NODE[n].pr != NULL_NODE ) {
     fprintf(stderr, "free_node: disconnect parent first\n");
