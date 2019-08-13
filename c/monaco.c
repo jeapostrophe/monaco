@@ -16,7 +16,7 @@ bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
       return true; } }
   return false; }
   
-#define POOL_SIZE UINT16_MAX
+#define POOL_SIZE (1*UINT16_MAX)
 typedef uint16_t node_ptr;
 #define NULL_NODE ((node_ptr)0)
 
@@ -40,10 +40,9 @@ node_ptr node_count = 0;
 void initialize_pool() {
   node_ptr last = NULL_NODE;
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
-    NODE[n].pq = last;
-    NODE[n].nq = n+1;
+    NODE[n].rs = n+1;
     last = n; }
-  NODE[last].nq = NULL_NODE;
+  NODE[last].rs = NULL_NODE;
   free_ptr = 1; }
 
 double current_ms() {
@@ -67,8 +66,7 @@ node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
     // XXX implement recycling
     exit(1); }
   
-  free_ptr = NODE[new].nq;
-  NODE[free_ptr].pq = NODE[new].pq;
+  free_ptr = NODE[new].rs;
 
   NODE[new].w = 0.0;
   NODE[new].v = 0;
@@ -110,10 +108,7 @@ void free_node( node_ptr n ) {
     fprintf(stderr, "Free siblings (or disconnect) first\n");
     exit(1); }
 
-  if ( free_ptr != NULL_NODE ) {
-    NODE[free_ptr].pq = n; }
-  NODE[n].nq = free_ptr;
-  NODE[n].pq = NULL_NODE;
+  NODE[n].rs = free_ptr;
   free_ptr = n;
 
   return; }
@@ -153,10 +148,9 @@ node_ptr select( node_ptr parent, float explore_factor ) {
 
   return best_child; }
 
-// XXX Incorporate "node complete beneath this point"
 action decide( node_ptr gt, state st ) {
   uint32_t iters = 0;
-  double deadline = current_ms() + 100;
+  double deadline = current_ms() + 1000;
   do {
     iters++;
     state sti = st;
@@ -173,7 +167,9 @@ action decide( node_ptr gt, state st ) {
       sti = eval(sti, NODE[gti].ia); }
 
     // Expand
-    if ( ! (NODE[gti].na == 0) ) {
+    if ( ! (NODE[gti].na == 0) &&
+         // Stunting: Don't expand when no free space
+         ! (free_ptr == NULL_NODE) ) {
       if ( debug_p ) {
         printf("expand %d\n", gti); }
       action m = NODE[gti].na - 1;
