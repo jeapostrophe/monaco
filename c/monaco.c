@@ -245,10 +245,12 @@ void play() {
     actor thisp = who(st);
     action a;
     if ( thisp == 1 ) {
-      char c;
+      char c = ' ';
       do {
-        printf("> ");
-        scanf("%c", &c);;
+        if ( ! (c == '\n') ) {
+          printf("> "); }
+        if ( scanf("%c", &c) == EOF ) {
+          exit(1); }
       } while ( ! (decode_action(st, c, &a) && legal_p(st, a)) ); }
     else {
       a = decide(gt, st); }
