@@ -7,7 +7,7 @@ bool legal_p( state st, action a );
 actor who( state st );
 state eval( state st, action a );
 
-const bool STUNTING = true;
+const bool STUNTING = false;
 const bool debug_p = false;
 
 bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
@@ -19,7 +19,7 @@ bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
 
 // XXX It would be nice to be able to easily have N-bit numbers so I
 // could have a 24-bit pointer. (Really I want a 20-bit pointer.)
-#define POOL_SIZE (1*UINT16_MAX)
+#define POOL_SIZE 32 // (1*UINT16_MAX)
 typedef uint16_t node_ptr;
 #define NULL_NODE ((node_ptr)0)
 
@@ -41,6 +41,35 @@ typedef struct {
 node NODE[POOL_SIZE] = {{0}};
 node_ptr free_ptr = NULL_NODE;
 node_ptr node_count = 0;
+
+void dg_edge(FILE *g, node_ptr x, node_ptr y, bool same) {
+  if ( y != NULL_NODE ) {
+    fprintf(g, "  n%d -> n%d\n", x, y);
+    if ( same ) {
+      fprintf(g, "  { rank = same; n%d; n%d; }\n", x, y); } } }
+void dump_graph() {
+  FILE *g = fopen("graph.dot", "w");
+  if ( ! g ) { perror("dump_graph"); exit(1); }
+
+  fprintf(g, "strict digraph BST {\n");
+  fprintf(g, "  rankdir = TB;\n");
+  for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
+    fprintf(g, "  n%d [ shape = %s, label = \"%d\\n%2.2f\" ]\n",
+            n, (NODE[n].wh == 1 ? "circle" : "square"),
+            NODE[n].ia, (100.0 * NODE[n].w / NODE[n].v)); }
+  fprintf(g, "  edge [ color = blue ]\n");
+  for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
+    dg_edge(g, n, NODE[n].pr, false); }
+  fprintf(g, "  edge [ color = red ]\n");
+  for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
+    dg_edge(g, n, NODE[n].lc, false); }
+  fprintf(g, "  edge [ color = green ]\n");
+  for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
+    dg_edge(g, n, NODE[n].rs, true); }
+  fprintf(g, "}\n");
+  
+  fclose(g); }
+  
 
 void initialize_pool() {
   node_ptr last = NULL_NODE;
@@ -69,6 +98,7 @@ node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
   if ( new == NULL_NODE ) {
     fprintf(stderr, "alloc_node: Out of memory\n");
     // XXX implement recycling
+    dump_graph();
     exit(1); }
   
   free_ptr = NODE[new].rs;
