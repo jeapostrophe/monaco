@@ -86,6 +86,12 @@ void theta_remove( node_ptr x ) {
   assert( NODE[x].nq == NULL_NODE );
   assert( NODE[x].pq == NULL_NODE ); }
 
+void do_children( node_ptr pr, void (*f)(node_ptr) ) {
+  node_ptr c = NODE[pr].lc;
+  while ( c != NULL_NODE ) {
+    f(c);
+    c = NODE[c].rs; } }
+
 void theta_reinsert( node_ptr x ) {
   theta_remove(x);
   theta_insert(x); }
@@ -95,18 +101,18 @@ void dg_edge(FILE *g, node_ptr x, node_ptr y, bool same) {
     fprintf(g, "  n%d -> n%d\n", x, y);
     if ( same ) {
       fprintf(g, "  { rank = same; n%d; n%d; }\n", x, y); } } }
-void dg_topoprint(FILE* g, node_ptr POS[], node_ptr curr, node_ptr n) {
+void dg_topoprint(FILE* g, node_ptr POS[], node_ptr target, node_ptr curr, node_ptr n) {
   if ( n == NULL_NODE ) { return; }
 
-  fprintf(g, "  n%d [ shape = %s, label = \"%d\\n%2.0f / %d\\n%2.2f\" ]\n",
-          n, (n == curr ? "hexagon" : (NODE[n].wh == 1 ? "circle" : "square")),
-          POS[n], NODE[n].w, NODE[n].v, (100.0 * NODE[n].w / NODE[n].v));
+  fprintf(g, "  n%d [ shape = %s, label = \"%d @ %d\\n%2.0f / %d\\n%2.2f\" ]\n",
+          n, (n == target ? "house" : (n == curr ? "hexagon" : (NODE[n].wh == 1 ? "circle" : "square"))),
+          n, POS[n], NODE[n].w, NODE[n].v, (100.0 * NODE[n].w / NODE[n].v));
 
   // XXX Is this possible without stack space?
-  dg_topoprint(g, POS, curr, NODE[n].rs);
-  dg_topoprint(g, POS, curr, NODE[n].lc); }
+  dg_topoprint(g, POS, target, curr, NODE[n].rs);
+  dg_topoprint(g, POS, target, curr, NODE[n].lc); }
 
-void dump_graph(node_ptr curr) {
+void dump_graph(node_ptr target, node_ptr curr) {
   FILE *g = fopen("graph.dot", "w");
   if ( ! g ) { perror("dump_graph"); exit(1); }
 
@@ -114,16 +120,19 @@ void dump_graph(node_ptr curr) {
   fprintf(g, "  rankdir = TB;\n");
 
   { node_ptr POS[POOL_SIZE] = {0};
+    // Compute the index into the queue
     { node_ptr i = 1;
       node_ptr n = theta_head;
       do {
         POS[n] = i++;
         n = NODE[n].nq; }
       while ( n != theta_head ); }
+    // Find the root node
     node_ptr root = curr;
     while ( NODE[root].pr != NULL_NODE ) {
       root = NODE[root].pr; }
-    dg_topoprint(g, POS, curr, root); }
+    // Print topologically, from the root
+    dg_topoprint(g, POS, target, curr, root); }
 
   fprintf(g, "  edge [ color = blue ]\n");
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
@@ -167,8 +176,9 @@ node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
   node_ptr new = free_ptr;
   if ( new == NULL_NODE ) {
     fprintf(stderr, "alloc_node: Out of memory\n");
+    dump_graph(NODE[theta_head].pq, parent);
     // XXX implement recycling
-    dump_graph(parent);
+    fprintf(stderr, "try to kill %d\n", NODE[theta_head].pq);
     exit(1); }
   
   free_ptr = NODE[new].rs;
@@ -236,8 +246,8 @@ node_ptr select( node_ptr parent, float explore_factor ) {
     if ( debug_p && explore_factor == 0.0 ) {
       printf("  ia(%d) w(%f) vd(%f) es(%f) sc(%f)\n",
              NODE[c].ia, w, vd, explore_score, score); }
-    // Update position in queue, because we looked at it
-    theta_reinsert( c );
+    // Remove the queue, so we don't kill this parent
+    theta_remove( c );
     if ( score > best_score ) {
       best_score = score;
       best_child = c; } }
@@ -257,7 +267,7 @@ action decide( node_ptr gt, state st ) {
     iters++;
     state sti = st;
     node_ptr gti = gt;
-    theta_reinsert(gti);
+    theta_remove(gti);
 
     if ( debug_p ) {
       printf("starting iteration %d\n", iters); }
@@ -279,7 +289,9 @@ action decide( node_ptr gt, state st ) {
       NODE[gti].na = next_legal( sti, m );
       actor lastp = who(sti);
       sti = eval(sti, m);
-      gti = alloc_node( gti, lastp, m, sti ); }
+      do_children(gti, theta_remove);
+      gti = alloc_node( gti, lastp, m, sti );
+      theta_remove(gti); }
 
     // Default Policy
     bool simulate_step1 = true;
@@ -310,7 +322,8 @@ action decide( node_ptr gt, state st ) {
         NODE[gti].wh == w ? 1.0 :
         (w == 0 ? 0.5 : 0.0);
       NODE[gti].v++;
-      gti = NODE[gti].pr; }
+      gti = NODE[gti].pr;
+      do_children(gti, theta_insert); }
   } while ( current_ms() < deadline );
 
   printf("Took %d steps, %d nodes total\n", iters, node_count);
