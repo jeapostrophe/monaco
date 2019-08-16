@@ -24,7 +24,7 @@ bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
 // XXX It would be nice to be able to easily have N-bit numbers so I
 // could have a 20-bit pointer. (Stored as 16, plus half a byte
 // (shared with other nibbles)
-#define POOL_SIZE 33 // (1*UINT16_MAX)
+#define POOL_SIZE 16 // (1*UINT16_MAX)
 typedef uint16_t node_ptr;
 #define NULL_NODE ((node_ptr)0)
 
@@ -34,10 +34,8 @@ typedef struct {
   node_ptr pr; // parent
   node_ptr lc; // left-child
   node_ptr rs; // right-sibling
-  /*
   node_ptr pq; // prev in queue
   node_ptr nq; // next in queue
-  */
   action   ia; // initiating action
   action   na; // next action to expand
   actor    wh; // who is acting
@@ -46,6 +44,40 @@ typedef struct {
 node NODE[POOL_SIZE] = {{0}};
 node_ptr free_ptr = NULL_NODE;
 node_ptr node_count = 0;
+node_ptr theta_head = NULL_NODE;
+
+void theta_insert( node_ptr x ) {
+  if ( theta_head == NULL_NODE ) {
+    NODE[x].pq = x;
+    NODE[x].nq = x; }
+  else {
+    assert( NODE[theta_head].nq != NULL_NODE );
+    assert( NODE[theta_head].pq != NULL_NODE );
+
+    NODE[x].nq = theta_head;
+    NODE[x].pq = NODE[theta_head].pq;
+    NODE[NODE[x].pq].nq = x;
+    NODE[theta_head].pq = x; }
+
+  assert( NODE[x].nq != NULL_NODE );
+  assert( NODE[x].pq != NULL_NODE );
+
+  theta_head = x; }
+
+void theta_remove( node_ptr x ) {
+  node_ptr nq = NODE[x].nq;
+  node_ptr pq = NODE[x].pq;
+  if ( nq == x ) {
+    assert( pq == x );
+    assert( theta_head == x );
+    NODE[x].nq = NULL_NODE;
+    NODE[x].pq = NULL_NODE;
+    theta_head = NULL_NODE; }
+  else {
+    NODE[pq].nq = nq;
+    NODE[nq].pq = pq;
+    if ( theta_head == x ) {
+      theta_head = nq; } } }
 
 void dg_edge(FILE *g, node_ptr x, node_ptr y, bool same) {
   if ( y != NULL_NODE ) {
@@ -58,24 +90,46 @@ void dump_graph(node_ptr curr) {
 
   fprintf(g, "strict digraph MCTS {\n");
   fprintf(g, "  rankdir = TB;\n");
+
+  if ( free_ptr != NULL_NODE ) {
+    fprintf(g, "  free [ shape = plaintext, label = \"free\" ]\n");
+    fprintf(g, "  edge [ color = yellow ]\n");
+    fprintf(g, "  free -> n%d\n", free_ptr); }
+
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
     fprintf(g, "  n%d [ shape = %s, label = \"%d\\n%2.2f\" ]\n",
             n, (n == curr ? "hexagon" : (NODE[n].wh == 1 ? "circle" : "square")),
             NODE[n].ia, (100.0 * NODE[n].w / NODE[n].v)); }
+
   fprintf(g, "  edge [ color = blue ]\n");
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
     dg_edge(g, n, NODE[n].pr, false); }
+
   fprintf(g, "  edge [ color = red ]\n");
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
     dg_edge(g, n, NODE[n].lc, false); }
+
   fprintf(g, "  edge [ color = green ]\n");
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
     dg_edge(g, n, NODE[n].rs, true); }
+
+  // XXX The edges sometimes overlap
+  if ( theta_head != NULL_NODE ) {
+    fprintf(g, "  q  [ shape = plaintext, label = \"Θ\" ]\n");
+    fprintf(g, "  edge [ color = orange ]\n");
+    fprintf(g, "  q -> n%d\n", theta_head);
+    for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
+      dg_edge(g, n, NODE[n].nq, false); }
+    /*
+    fprintf(g, "  edge [ color = violet ]\n");
+    for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
+      dg_edge(g, n, NODE[n].pq, false); }
+    */ }
+
   fprintf(g, "}\n");
   
   fclose(g); }
   
-
 void initialize_pool() {
   node_ptr last = NULL_NODE;
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
@@ -113,8 +167,6 @@ node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
   NODE[new].pr = parent;
   NODE[new].lc = NULL_NODE;
   NODE[new].rs = NULL_NODE;
-  // NODE[new].pq = NULL_NODE;
-  // NODE[new].nq = NULL_NODE;
   NODE[new].ia = ia;
   if ( terminal_p(st) ) {
     NODE[new].na = 0;
@@ -126,19 +178,13 @@ node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
   if ( parent != NULL_NODE ) {
     NODE[new].rs = NODE[parent].lc;
     NODE[parent].lc = new; }
+
+  theta_insert(new);
   
   return new; }
 
 void free_node( node_ptr n ) {
   node_count--;
-  /*
-  node_ptr nq = NODE[n].nq;
-  if ( nq != NULL_NODE ) {
-    NODE[nq].pq = NODE[n].pq; }
-  node_ptr pq = NODE[n].pq;
-  if ( pq != NULL_NODE ) {
-    NODE[pq].nq = nq; }
-  */
 
   if ( NODE[n].pr != NULL_NODE ) {
     fprintf(stderr, "free_node: disconnect parent first\n");
@@ -152,6 +198,8 @@ void free_node( node_ptr n ) {
 
   NODE[n].rs = free_ptr;
   free_ptr = n;
+
+  theta_remove(n);
 
   return; }
 

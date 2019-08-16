@@ -56,3 +56,9 @@ void display_bits(uint64_t b, uint8_t len) {
   for ( uint8_t i = 0; i < len; i++ ) {
     printf("%c", ( BIT_TESTi(b,i) ? '1' : '0' )); }
   printf("\n");}
+
+#define assert(c) _assert(c, __FILE__, __LINE__)
+void _assert( bool c, const char *file, int line ) {
+  if ( ! c ) {
+    fprintf(stderr, "failed assertion on %s:L%d\n", file, line);
+    exit(1); } }
