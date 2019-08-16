@@ -24,7 +24,7 @@ bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
 // XXX It would be nice to be able to easily have N-bit numbers so I
 // could have a 20-bit pointer. (Stored as 16, plus half a byte
 // (shared with other nibbles)
-#define POOL_SIZE 16 // (1*UINT16_MAX)
+#define POOL_SIZE 64 // (1*UINT16_MAX)
 typedef uint16_t node_ptr;
 #define NULL_NODE ((node_ptr)0)
 
@@ -98,9 +98,9 @@ void dg_edge(FILE *g, node_ptr x, node_ptr y, bool same) {
 void dg_topoprint(FILE* g, node_ptr POS[], node_ptr curr, node_ptr n) {
   if ( n == NULL_NODE ) { return; }
 
-  fprintf(g, "  n%d [ shape = %s, label = \"%d @ %d\\n%2.2f\" ]\n",
+  fprintf(g, "  n%d [ shape = %s, label = \"%d\\n%2.0f / %d\\n%2.2f\" ]\n",
           n, (n == curr ? "hexagon" : (NODE[n].wh == 1 ? "circle" : "square")),
-          n, POS[n], (100.0 * NODE[n].w / NODE[n].v));
+          POS[n], NODE[n].w, NODE[n].v, (100.0 * NODE[n].w / NODE[n].v));
 
   // XXX Is this possible without stack space?
   dg_topoprint(g, POS, curr, NODE[n].rs);
@@ -114,7 +114,7 @@ void dump_graph(node_ptr curr) {
   fprintf(g, "  rankdir = TB;\n");
 
   { node_ptr POS[POOL_SIZE] = {0};
-    { node_ptr i = 0;
+    { node_ptr i = 1;
       node_ptr n = theta_head;
       do {
         POS[n] = i++;
@@ -236,8 +236,8 @@ node_ptr select( node_ptr parent, float explore_factor ) {
     if ( debug_p && explore_factor == 0.0 ) {
       printf("  ia(%d) w(%f) vd(%f) es(%f) sc(%f)\n",
              NODE[c].ia, w, vd, explore_score, score); }
-    // XXX Update position in queue
-    // theta_reinsert( c );
+    // Update position in queue, because we looked at it
+    theta_reinsert( c );
     if ( score > best_score ) {
       best_score = score;
       best_child = c; } }
@@ -257,6 +257,7 @@ action decide( node_ptr gt, state st ) {
     iters++;
     state sti = st;
     node_ptr gti = gt;
+    theta_reinsert(gti);
 
     if ( debug_p ) {
       printf("starting iteration %d\n", iters); }
@@ -281,6 +282,7 @@ action decide( node_ptr gt, state st ) {
       gti = alloc_node( gti, lastp, m, sti ); }
 
     // Default Policy
+    bool simulate_step1 = true;
     while ( ! terminal_p(sti) ) {
       action how_many_actions = estimate_legal( sti );
       action a;
@@ -288,6 +290,17 @@ action decide( node_ptr gt, state st ) {
       while ( ! legal_p( sti, a ) );
       if ( debug_p ) {
         render_st(sti); }
+
+      // If stunting, then accrue statistics if we happen to choose an
+      // existing child in the very first step.
+      if ( simulate_step1 ) {
+        node_ptr c = NODE[gti].lc;
+        while ( c != NULL_NODE ) {
+          if ( NODE[c].ia == a ) {
+            gti = c; break; }
+          c = NODE[c].rs; }
+        simulate_step1 = false; }
+
       sti = eval(sti, a); }
     
     // Back propagate
