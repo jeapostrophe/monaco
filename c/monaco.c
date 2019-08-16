@@ -47,6 +47,9 @@ node_ptr node_count = 0;
 node_ptr theta_head = NULL_NODE;
 
 void theta_insert( node_ptr x ) {
+  assert( NODE[x].nq == NULL_NODE );
+  assert( NODE[x].pq == NULL_NODE );
+
   if ( theta_head == NULL_NODE ) {
     NODE[x].pq = x;
     NODE[x].nq = x; }
@@ -67,17 +70,25 @@ void theta_insert( node_ptr x ) {
 void theta_remove( node_ptr x ) {
   node_ptr nq = NODE[x].nq;
   node_ptr pq = NODE[x].pq;
+  NODE[x].nq = NULL_NODE;
+  NODE[x].pq = NULL_NODE;
+
   if ( nq == x ) {
     assert( pq == x );
     assert( theta_head == x );
-    NODE[x].nq = NULL_NODE;
-    NODE[x].pq = NULL_NODE;
     theta_head = NULL_NODE; }
   else {
     NODE[pq].nq = nq;
     NODE[nq].pq = pq;
     if ( theta_head == x ) {
-      theta_head = nq; } } }
+      theta_head = nq; } }
+
+  assert( NODE[x].nq == NULL_NODE );
+  assert( NODE[x].pq == NULL_NODE ); }
+
+void theta_reinsert( node_ptr x ) {
+  theta_remove(x);
+  theta_insert(x); }
 
 void dg_edge(FILE *g, node_ptr x, node_ptr y, bool same) {
   if ( y != NULL_NODE ) {
@@ -226,6 +237,7 @@ node_ptr select( node_ptr parent, float explore_factor ) {
       printf("  ia(%d) w(%f) vd(%f) es(%f) sc(%f)\n",
              NODE[c].ia, w, vd, explore_score, score); }
     // XXX Update position in queue
+    // theta_reinsert( c );
     if ( score > best_score ) {
       best_score = score;
       best_child = c; } }
