@@ -24,8 +24,8 @@ bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
 // XXX It would be nice to be able to easily have N-bit numbers so I
 // could have a 20-bit pointer. (Stored as 16, plus half a byte
 // (shared with other nibbles)
-#define POOL_SIZE 64 // (1*UINT16_MAX)
-typedef uint16_t node_ptr;
+#define POOL_SIZE (16*UINT16_MAX)
+typedef uint32_t node_ptr;
 #define NULL_NODE ((node_ptr)0)
 
 typedef struct {
@@ -44,9 +44,11 @@ typedef struct {
 node NODE[POOL_SIZE] = {{0}};
 node_ptr free_ptr = NULL_NODE;
 node_ptr node_count = 0;
+node_ptr recycled = 0;
 node_ptr theta_head = NULL_NODE;
 
 void theta_insert( node_ptr x ) {
+  /* fprintf(stderr, "ti %d\n", x); */
   assert( NODE[x].nq == NULL_NODE );
   assert( NODE[x].pq == NULL_NODE );
 
@@ -68,6 +70,7 @@ void theta_insert( node_ptr x ) {
   theta_head = x; }
 
 void theta_remove( node_ptr x ) {
+  /* fprintf(stderr, "tr %d\n", x); */
   node_ptr nq = NODE[x].nq;
   node_ptr pq = NODE[x].pq;
   NODE[x].nq = NULL_NODE;
@@ -88,13 +91,12 @@ void theta_remove( node_ptr x ) {
 
 void do_children( node_ptr pr, void (*f)(node_ptr) ) {
   node_ptr c = NODE[pr].lc;
+  const char *lab = (f == theta_remove ? "remove" : "insert");
+  /* fprintf(stderr, "< do %s on %d children\n", lab, pr); */
   while ( c != NULL_NODE ) {
     f(c);
-    c = NODE[c].rs; } }
-
-void theta_reinsert( node_ptr x ) {
-  theta_remove(x);
-  theta_insert(x); }
+    c = NODE[c].rs; }
+  /* fprintf(stderr, "> do %s on %d children\n", lab, pr); */ }
 
 void dg_edge(FILE *g, node_ptr x, node_ptr y, bool same) {
   if ( y != NULL_NODE ) {
@@ -104,9 +106,10 @@ void dg_edge(FILE *g, node_ptr x, node_ptr y, bool same) {
 void dg_topoprint(FILE* g, node_ptr POS[], node_ptr target, node_ptr curr, node_ptr n) {
   if ( n == NULL_NODE ) { return; }
 
-  fprintf(g, "  n%d [ shape = %s, label = \"%d @ %d\\n%2.0f / %d\\n%2.2f\" ]\n",
+  fprintf(g, "  n%d [ shape = %s, label = \"%d @ %d\\nia(%d) na(%d)\\n%2.0f / %d\\n%2.2f\" ]\n",
           n, (n == target ? "house" : (n == curr ? "hexagon" : (NODE[n].wh == 1 ? "circle" : "square"))),
-          n, POS[n], NODE[n].w, NODE[n].v, (100.0 * NODE[n].w / NODE[n].v));
+          n, POS[n], NODE[n].ia, NODE[n].na, 
+          NODE[n].w, NODE[n].v, (100.0 * NODE[n].w / NODE[n].v));
 
   // XXX Is this possible without stack space?
   dg_topoprint(g, POS, target, curr, NODE[n].rs);
@@ -132,7 +135,9 @@ void dump_graph(node_ptr target, node_ptr curr) {
     while ( NODE[root].pr != NULL_NODE ) {
       root = NODE[root].pr; }
     // Print topologically, from the root
-    dg_topoprint(g, POS, target, curr, root); }
+    dg_topoprint(g, POS, target, curr, root);
+
+    dg_topoprint(g, POS, target, curr, target); }
 
   fprintf(g, "  edge [ color = blue ]\n");
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
@@ -171,15 +176,59 @@ action next_legal( state st, action prev ) {
       if ( legal_p(st, prev) ) {
         return prev + 1; } } } }
 
+void free_node( node_ptr n ) {
+  node_count--;
+
+  assert( NODE[n].pq == NULL_NODE );
+  assert( NODE[n].nq == NULL_NODE );
+  assert( NODE[n].pr == NULL_NODE );
+  assert( NODE[n].lc == NULL_NODE );
+  assert( NODE[n].rs == NULL_NODE );
+
+  NODE[n].rs = free_ptr;
+  free_ptr = n;
+
+  return; }
+
+void free_node_rec( node_ptr n ) {
+  if ( n == NULL_NODE ) { return; }
+  free_node_rec(NODE[n].lc); NODE[n].lc = NULL_NODE;
+  free_node_rec(NODE[n].rs); NODE[n].rs = NULL_NODE;
+  NODE[n].pr = NULL_NODE;
+  theta_remove(n);
+  free_node(n); }
+
+void recycle(node_ptr curr) {
+  node_ptr last = NODE[theta_head].pq;
+  if( last == NULL_NODE ) {
+    fprintf(stderr, "recycle: no last\n");
+    return; }
+  node_ptr pr = NODE[last].pr;
+  if( pr == NULL_NODE ) {
+    fprintf(stderr, "recycle: last(%d) has no parent\n", last);
+    return; }
+  recycled++;
+  node_ptr c = NODE[pr].lc;
+  assert(c != NULL_NODE);
+  NODE[pr].na = NODE[c].ia + 1;
+  NODE[pr].lc = NODE[c].rs;
+  NODE[c].rs = NULL_NODE;
+  /* dump_graph(c, curr); */
+  /* fprintf(stderr, "BEGIN killing %d\n", c); */
+  free_node_rec(c);
+  /* fprintf(stderr, "END killing %d\n", c); */ }
+
 node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
   node_count++;
   node_ptr new = free_ptr;
   if ( new == NULL_NODE ) {
-    fprintf(stderr, "alloc_node: Out of memory\n");
-    dump_graph(NODE[theta_head].pq, parent);
-    // XXX implement recycling
-    fprintf(stderr, "try to kill %d\n", NODE[theta_head].pq);
-    exit(1); }
+    recycle(parent);
+    new = free_ptr;
+    if ( new == NULL_NODE ) {
+      fprintf(stderr, "alloc_node: Out of memory\n");
+      fprintf(stderr, "tail is %d\n", NODE[theta_head].pq);
+      dump_graph(NODE[theta_head].pq, parent);
+      exit(1); } }
   
   free_ptr = NODE[new].rs;
 
@@ -203,33 +252,6 @@ node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
   theta_insert(new);
   
   return new; }
-
-void free_node( node_ptr n ) {
-  node_count--;
-
-  if ( NODE[n].pr != NULL_NODE ) {
-    fprintf(stderr, "free_node: disconnect parent first\n");
-    exit(1); }
-  if ( NODE[n].lc != NULL_NODE ) {
-    fprintf(stderr, "Free children (or disconnect) first\n");
-    exit(1); }
-  if ( NODE[n].rs != NULL_NODE ) {
-    fprintf(stderr, "Free siblings (or disconnect) first\n");
-    exit(1); }
-
-  NODE[n].rs = free_ptr;
-  free_ptr = n;
-
-  theta_remove(n);
-
-  return; }
-
-void free_node_rec( node_ptr n ) {
-  if ( n == NULL_NODE ) { return; }
-  free_node_rec(NODE[n].lc); NODE[n].lc = NULL_NODE;
-  free_node_rec(NODE[n].rs); NODE[n].rs = NULL_NODE;
-  NODE[n].pr = NULL_NODE;
-  free_node(n); }
 
 node_ptr select( node_ptr parent, float explore_factor ) {
   double best_score = (-1.0/0.0);
@@ -261,6 +283,7 @@ node_ptr select( node_ptr parent, float explore_factor ) {
   return best_child; }
 
 action decide( node_ptr gt, state st ) {
+  recycled = 0;
   uint32_t iters = 0;
   double deadline = current_ms() + 1000;
   do {
@@ -289,9 +312,8 @@ action decide( node_ptr gt, state st ) {
       NODE[gti].na = next_legal( sti, m );
       actor lastp = who(sti);
       sti = eval(sti, m);
-      do_children(gti, theta_remove);
       gti = alloc_node( gti, lastp, m, sti );
-      theta_remove(gti); }
+      do_children(NODE[gti].pr, theta_remove); }
 
     // Default Policy
     bool simulate_step1 = true;
@@ -326,8 +348,10 @@ action decide( node_ptr gt, state st ) {
       do_children(gti, theta_insert); }
   } while ( current_ms() < deadline );
 
-  printf("Took %d steps, %d nodes total\n", iters, node_count);
+  printf("Took %d steps, %d nodes total, recycled %d\n",
+         iters, node_count, recycled);
   node_ptr bc = select(gt, 0.0);
+  // dump_graph(bc, gt); exit(2);
   action a = NODE[bc].ia;
   return a; }
 
@@ -337,6 +361,7 @@ node_ptr choose( node_ptr gt, action a ) {
   node_ptr r = NULL_NODE;
   node_ptr c = NODE[gt].lc;
   NODE[gt].lc = NULL_NODE;
+  theta_remove(gt);
   free_node(gt);
   while ( c != NULL_NODE ) {
     node_ptr t = c;
