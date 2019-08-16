@@ -1,11 +1,15 @@
-action how_many_actions;
+// Interface to games
+
 bool terminal_p( state st );
 actor winner( state st ); // 0 is draw
 void render_st( state st );
 bool decode_action( state st, char c, action *a );
+action estimate_legal( state st );
 bool legal_p( state st, action a );
 actor who( state st );
 state eval( state st, action a );
+
+// Monaco
 
 const bool STUNTING = false;
 const bool debug_p = false;
@@ -18,8 +22,9 @@ bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
   return false; }
 
 // XXX It would be nice to be able to easily have N-bit numbers so I
-// could have a 24-bit pointer. (Really I want a 20-bit pointer.)
-#define POOL_SIZE 32 // (1*UINT16_MAX)
+// could have a 20-bit pointer. (Stored as 16, plus half a byte
+// (shared with other nibbles)
+#define POOL_SIZE 33 // (1*UINT16_MAX)
 typedef uint16_t node_ptr;
 #define NULL_NODE ((node_ptr)0)
 
@@ -47,15 +52,15 @@ void dg_edge(FILE *g, node_ptr x, node_ptr y, bool same) {
     fprintf(g, "  n%d -> n%d\n", x, y);
     if ( same ) {
       fprintf(g, "  { rank = same; n%d; n%d; }\n", x, y); } } }
-void dump_graph() {
+void dump_graph(node_ptr curr) {
   FILE *g = fopen("graph.dot", "w");
   if ( ! g ) { perror("dump_graph"); exit(1); }
 
-  fprintf(g, "strict digraph BST {\n");
+  fprintf(g, "strict digraph MCTS {\n");
   fprintf(g, "  rankdir = TB;\n");
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
     fprintf(g, "  n%d [ shape = %s, label = \"%d\\n%2.2f\" ]\n",
-            n, (NODE[n].wh == 1 ? "circle" : "square"),
+            n, (n == curr ? "hexagon" : (NODE[n].wh == 1 ? "circle" : "square")),
             NODE[n].ia, (100.0 * NODE[n].w / NODE[n].v)); }
   fprintf(g, "  edge [ color = blue ]\n");
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
@@ -98,7 +103,7 @@ node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
   if ( new == NULL_NODE ) {
     fprintf(stderr, "alloc_node: Out of memory\n");
     // XXX implement recycling
-    dump_graph();
+    dump_graph(parent);
     exit(1); }
   
   free_ptr = NODE[new].rs;
@@ -114,7 +119,7 @@ node_ptr alloc_node( node_ptr parent, actor lastp, action ia, state st ) {
   if ( terminal_p(st) ) {
     NODE[new].na = 0;
   } else {
-    action a = next_legal( st, how_many_actions );
+    action a = next_legal( st, estimate_legal( st ) );
     NODE[new].na = a; }
   NODE[new].wh = lastp;
 
@@ -217,6 +222,7 @@ action decide( node_ptr gt, state st ) {
 
     // Default Policy
     while ( ! terminal_p(sti) ) {
+      action how_many_actions = estimate_legal( sti );
       action a;
       do { a = rand() % how_many_actions; }
       while ( ! legal_p( sti, a ) );

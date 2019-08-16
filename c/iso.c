@@ -6,8 +6,6 @@
 uint8_t cell( uint8_t r, uint8_t c ) {
   return c + r * COLS; }
 
-action how_many_actions = max(DIRS,max(ROWS,COLS));
-
 typedef uint64_t state;
 
 DEFINE_FIELD(PLAYER, 0, 1);
@@ -84,6 +82,15 @@ posn decode_move( action a ) {
   posn p = { .r = a / 3 - 1,
              .c = a % 3 - 1 };
   return p; }
+
+action estimate_legal( state st ) {
+  phase_t p = phase( st );
+  if ( p == PHASE_MOVE ) {
+    return DIRS; }
+  else if ( p == PHASE_ROW ) {
+    return ROWS; }
+  else {
+    return COLS; } }
 
 bool legal_p( state st, action a ) {
   phase_t p = phase(st);

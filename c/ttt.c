@@ -7,8 +7,6 @@ typedef uint16_t board;
 #define COLS 3
 #define SLOTS (ROWS*COLS)
 
-action how_many_actions = SLOTS;
-
 #define PLAYER_IDX 0
 #define O_START (PLAYER_IDX+1)
 #define O_LEN SLOTS
@@ -68,6 +66,8 @@ actor winner( state st ) {
 actor who( state st ) {
   return 1 + BIT_TESTi(st, PLAYER_IDX); }
 
+action estimate_legal( state st ) {
+  return SLOTS; }
 bool legal_p( state st, action a ) {
   return (BIT_TESTi(marks_all(st), a) == 0); }
 
