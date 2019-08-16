@@ -95,25 +95,35 @@ void dg_edge(FILE *g, node_ptr x, node_ptr y, bool same) {
     fprintf(g, "  n%d -> n%d\n", x, y);
     if ( same ) {
       fprintf(g, "  { rank = same; n%d; n%d; }\n", x, y); } } }
+void dg_topoprint(FILE* g, node_ptr POS[], node_ptr curr, node_ptr n) {
+  if ( n == NULL_NODE ) { return; }
+
+  fprintf(g, "  n%d [ shape = %s, label = \"%d @ %d\\n%2.2f\" ]\n",
+          n, (n == curr ? "hexagon" : (NODE[n].wh == 1 ? "circle" : "square")),
+          n, POS[n], (100.0 * NODE[n].w / NODE[n].v));
+
+  // XXX Is this possible without stack space?
+  dg_topoprint(g, POS, curr, NODE[n].rs);
+  dg_topoprint(g, POS, curr, NODE[n].lc); }
+
 void dump_graph(node_ptr curr) {
   FILE *g = fopen("graph.dot", "w");
   if ( ! g ) { perror("dump_graph"); exit(1); }
 
-  node_ptr POS[POOL_SIZE] = {0};
-  { node_ptr i = 0;
-    node_ptr n = theta_head;
-    do {
-      POS[n] = i++;
-      n = NODE[n].nq; }
-    while ( n != theta_head ); }
-
   fprintf(g, "strict digraph MCTS {\n");
   fprintf(g, "  rankdir = TB;\n");
 
-  for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
-    fprintf(g, "  n%d [ shape = %s, label = \"%d @ %d\\n%2.2f\" ]\n",
-            n, (n == curr ? "hexagon" : (NODE[n].wh == 1 ? "circle" : "square")),
-            n, POS[n], (100.0 * NODE[n].w / NODE[n].v)); }
+  { node_ptr POS[POOL_SIZE] = {0};
+    { node_ptr i = 0;
+      node_ptr n = theta_head;
+      do {
+        POS[n] = i++;
+        n = NODE[n].nq; }
+      while ( n != theta_head ); }
+    node_ptr root = curr;
+    while ( NODE[root].pr != NULL_NODE ) {
+      root = NODE[root].pr; }
+    dg_topoprint(g, POS, curr, root); }
 
   fprintf(g, "  edge [ color = blue ]\n");
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
