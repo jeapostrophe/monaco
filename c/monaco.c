@@ -99,18 +99,21 @@ void dump_graph(node_ptr curr) {
   FILE *g = fopen("graph.dot", "w");
   if ( ! g ) { perror("dump_graph"); exit(1); }
 
+  node_ptr POS[POOL_SIZE] = {0};
+  { node_ptr i = 0;
+    node_ptr n = theta_head;
+    do {
+      POS[n] = i++;
+      n = NODE[n].nq; }
+    while ( n != theta_head ); }
+
   fprintf(g, "strict digraph MCTS {\n");
   fprintf(g, "  rankdir = TB;\n");
 
-  if ( free_ptr != NULL_NODE ) {
-    fprintf(g, "  free [ shape = plaintext, label = \"free\" ]\n");
-    fprintf(g, "  edge [ color = yellow ]\n");
-    fprintf(g, "  free -> n%d\n", free_ptr); }
-
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
-    fprintf(g, "  n%d [ shape = %s, label = \"%d\\n%2.2f\" ]\n",
+    fprintf(g, "  n%d [ shape = %s, label = \"%d @ %d\\n%2.2f\" ]\n",
             n, (n == curr ? "hexagon" : (NODE[n].wh == 1 ? "circle" : "square")),
-            NODE[n].ia, (100.0 * NODE[n].w / NODE[n].v)); }
+            n, POS[n], (100.0 * NODE[n].w / NODE[n].v)); }
 
   fprintf(g, "  edge [ color = blue ]\n");
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
@@ -123,19 +126,6 @@ void dump_graph(node_ptr curr) {
   fprintf(g, "  edge [ color = green ]\n");
   for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
     dg_edge(g, n, NODE[n].rs, true); }
-
-  // XXX The edges sometimes overlap
-  if ( theta_head != NULL_NODE ) {
-    fprintf(g, "  q  [ shape = plaintext, label = \"Θ\" ]\n");
-    fprintf(g, "  edge [ color = orange ]\n");
-    fprintf(g, "  q -> n%d\n", theta_head);
-    for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
-      dg_edge(g, n, NODE[n].nq, false); }
-    /*
-    fprintf(g, "  edge [ color = violet ]\n");
-    for ( node_ptr n = 1; n < POOL_SIZE; n++ ) {
-      dg_edge(g, n, NODE[n].pq, false); }
-    */ }
 
   fprintf(g, "}\n");
   
