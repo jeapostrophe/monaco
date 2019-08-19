@@ -24,9 +24,12 @@ bool decode_action_keys( const char *keys, action max_key, char c, action *a ) {
 // XXX It would be nice to be able to easily have N-bit numbers so I
 // could have a 20-bit pointer. (Stored as 16, plus half a byte
 // (shared with other nibbles)
-#define POOL_SIZE (16*UINT16_MAX)
-typedef uint32_t node_ptr;
+#define POOL_SIZE UINT16_MAX
+typedef uint16_t node_ptr;
 #define NULL_NODE ((node_ptr)0)
+
+const uint32_t SIMULATIONS_PER_ITERATION = 4;
+const uint32_t MIN_ITERS = POOL_SIZE / SIMULATIONS_PER_ITERATION;
 
 typedef struct {
   float     w; // wins
@@ -282,14 +285,18 @@ node_ptr select( node_ptr parent, float explore_factor ) {
 
   return best_child; }
 
-action decide( node_ptr gt, state st ) {
+action decide( uint32_t rounds, node_ptr gt, state st ) {
   recycled = 0;
   uint32_t iters = 0;
-  double deadline = current_ms() + 1000;
+  uint32_t max_depth = 0;
+  double start = current_ms();
+  double deadline = start + 100;
   do {
     iters++;
     state sti = st;
     node_ptr gti = gt;
+    uint32_t depth = 0;
+    uint32_t wins[UINT8_MAX] = {0};
     theta_remove(gti);
 
     if ( debug_p ) {
@@ -300,10 +307,11 @@ action decide( node_ptr gt, state st ) {
       if ( debug_p ) {
         printf("tree_policy %d\n", gti); }
       gti = select(gti, 1.0);
-      sti = eval(sti, NODE[gti].ia); }
+      sti = eval(sti, NODE[gti].ia); depth++; }
 
     // Expand
     if ( ! (NODE[gti].na == 0) &&
+         // XXX Detect if alloc_node will fail and have stunting turn on in that case
          // Stunting: Don't expand when no free space
          ( ! STUNTING || ! (free_ptr == NULL_NODE)) ) {
       if ( debug_p ) {
@@ -311,45 +319,52 @@ action decide( node_ptr gt, state st ) {
       action m = NODE[gti].na - 1;
       NODE[gti].na = next_legal( sti, m );
       actor lastp = who(sti);
-      sti = eval(sti, m);
+      sti = eval(sti, m); depth++;
       gti = alloc_node( gti, lastp, m, sti );
       do_children(NODE[gti].pr, theta_remove); }
 
+    if ( max_depth < depth ) {
+      max_depth = depth; }
+
     // Default Policy
-    bool simulate_step1 = true;
-    while ( ! terminal_p(sti) ) {
-      action how_many_actions = estimate_legal( sti );
-      action a;
-      do { a = rand() % how_many_actions; }
-      while ( ! legal_p( sti, a ) );
-      if ( debug_p ) {
-        render_st(sti); }
+    state saved_sti = sti;
+    for ( uint32_t simi = 0; simi < SIMULATIONS_PER_ITERATION; simi++ ) {
+      sti = saved_sti;
+      
+      bool simulate_step1 = true;
+      while ( ! terminal_p(sti) ) {
+        action how_many_actions = estimate_legal( sti );
+        action a;
+        do { a = rand() % how_many_actions; }
+        while ( ! legal_p( sti, a ) );
+        if ( debug_p ) {
+          render_st(sti); }
 
-      // If stunting, then accrue statistics if we happen to choose an
-      // existing child in the very first step.
-      if ( simulate_step1 ) {
-        node_ptr c = NODE[gti].lc;
-        while ( c != NULL_NODE ) {
-          if ( NODE[c].ia == a ) {
-            gti = c; break; }
-          c = NODE[c].rs; }
-        simulate_step1 = false; }
+        // If stunting, then accrue statistics if we happen to choose an
+        // existing child in the very first step.
+        if ( simulate_step1 ) {
+          node_ptr c = NODE[gti].lc;
+          while ( c != NULL_NODE ) {
+            if ( NODE[c].ia == a ) {
+              gti = c; break; }
+            c = NODE[c].rs; }
+          simulate_step1 = false; }
 
-      sti = eval(sti, a); }
+        sti = eval(sti, a); }
+    
+      wins[winner(sti)]++; }
     
     // Back propagate
-    actor w = winner(sti);
     while ( gti != NULL_NODE ) {
-      NODE[gti].w +=
-        NODE[gti].wh == w ? 1.0 :
-        (w == 0 ? 0.5 : 0.0);
+      NODE[gti].w += wins[NODE[gti].wh] + 0.5 * wins[0];
       NODE[gti].v++;
       gti = NODE[gti].pr;
       do_children(gti, theta_insert); }
-  } while ( current_ms() < deadline );
+  } while ( current_ms() < deadline || iters < MIN_ITERS );
 
-  printf("Took %d steps, %d nodes total, recycled %d\n",
-         iters, node_count, recycled);
+  printf("Took %fms, %d steps, %d nodes total, recycled %d, max depth %d\n",
+         (current_ms() - start), iters, node_count,
+         recycled, max_depth);
   node_ptr bc = select(gt, 0.0);
   // dump_graph(bc, gt); exit(2);
   action a = NODE[bc].ia;
@@ -377,12 +392,17 @@ node_ptr choose( node_ptr gt, action a ) {
 
   return r; }
 
+// XXX Be able to run experiments with differently configured AIs
+// playing each other.
 void play() {
   state st = st0;
   node_ptr gt = NULL_NODE;
   actor lastp = 0;
+  uint32_t rounds = 0;
 
   while (1) {
+    rounds++;
+   
     if ( gt == NULL_NODE ) {
       gt = alloc_node( NULL_NODE, lastp, 0, st ); }
     printf("Expected value is %f\n",
@@ -394,7 +414,9 @@ void play() {
     
     actor thisp = who(st);
     action a;
-    if ( thisp == 1 ) {
+    // XXX implement environment player
+    // XXX implement a hidden information/move game to do MO-ISMCTS
+    if ( false && thisp == 1 ) {
       char c = ' ';
       do {
         if ( ! (c == '\n') ) {
@@ -403,7 +425,7 @@ void play() {
           exit(1); }
       } while ( ! (decode_action(st, c, &a) && legal_p(st, a)) ); }
     else {
-      a = decide(gt, st); }
+      a = decide(rounds, gt, st); }
     
     st = eval(st, a);
     gt = choose(gt, a);
@@ -414,6 +436,7 @@ void play() {
     printf("Draw\n"); }
   else {
     printf("Winner is %s\n", w == 1 ? "Player" : "Computer"); }
+  printf("Rounds: %d\n", rounds);
   return; }
 
 int main() {
